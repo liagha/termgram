@@ -122,6 +122,24 @@ pub struct Sent {
     pub id: i32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SendFormat {
+    Plain,
+    Markdown,
+    Html,
+}
+
+impl SendFormat {
+    pub fn parse(s: Option<&str>) -> anyhow::Result<Self> {
+        match s.unwrap_or("plain").to_ascii_lowercase().as_str() {
+            "plain" => Ok(SendFormat::Plain),
+            "md" | "markdown" => Ok(SendFormat::Markdown),
+            "html" => Ok(SendFormat::Html),
+            other => anyhow::bail!("format must be plain, md, or html, got {other}"),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct Done {
     pub n: usize,

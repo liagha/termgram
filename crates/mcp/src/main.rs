@@ -28,6 +28,7 @@ pub struct SendArgs {
     pub target: String,
     pub text: String,
     pub reply: Option<i32>,
+    pub format: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -248,9 +249,13 @@ impl Server {
         self.run(self.client.messages(&args.target, limit)).await
     }
 
-    #[tool(description = "Send a text message to a chat")]
+    #[tool(description = "Send a text message to a chat (format: plain, md, or html)")]
     async fn send(&self, Parameters(args): Parameters<SendArgs>) -> String {
-        self.run(self.client.send(&args.target, &args.text, args.reply))
+        let fmt = match termgram::SendFormat::parse(args.format.as_deref()) {
+            Ok(format) => format,
+            Err(err) => return format!("{err}"),
+        };
+        self.run(self.client.send(&args.target, &args.text, args.reply, fmt))
             .await
     }
 

@@ -148,7 +148,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = termgram::Config::load()?;
     let api_hash = cfg.api_hash.clone();
-    let mut client = Client::new(&cfg, &cli.account).await?;
+    let mut client = if matches!(cli.op, Command::Login) {
+        Client::new_boot(&cfg, &cli.account).await?
+    } else {
+        Client::new(&cfg, &cli.account).await?
+    };
     match cli.op {
         Command::Login => {
             let me = client.login(&api_hash).await?;
@@ -208,8 +212,9 @@ async fn main() -> Result<()> {
                 println!("[{}] {at} {}: {}", line.id, Out::who(&line), line.text);
             }
         }
-        Command::Send { target, text, reply } => {
-            let sent = client.send(&target, &text, reply).await?;
+        Command::Send { target, text, reply, format } => {
+            let fmt = termgram::SendFormat::parse(format.as_deref())?;
+            let sent = client.send(&target, &text, reply, fmt).await?;
             println!("sent {}", sent.id);
         }
         Command::Read { target } => {

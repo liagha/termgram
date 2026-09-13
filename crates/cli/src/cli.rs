@@ -28,9 +28,13 @@ pub enum Command {
     Send {
         /// who: @username, chat id, or contact name
         target: String,
+        /// plain text (keeps date strings tappable as chips in Telegram) or md/html formatting
         text: String,
         #[arg(long)]
         reply: Option<i32>,
+        /// plain, md, or html
+        #[arg(long)]
+        format: Option<String>,
     },
     Read {
         /// who: @username, chat id, or contact name

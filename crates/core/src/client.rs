@@ -29,6 +29,19 @@ pub struct Client {
 
 impl Client {
     pub async fn new(cfg: &Config, account: &str) -> Result<Self> {
+        let client = Self::new_boot(cfg, account).await?;
+        let mine = client
+            .raw
+            .is_authorized()
+            .await
+            .map_err(|err| anyhow::anyhow!("{err}"))?;
+        if !mine {
+            bail!("no session for account {account} - run `termgram login`");
+        }
+        Ok(client)
+    }
+
+    pub async fn new_boot(cfg: &Config, account: &str) -> Result<Self> {
         let file = if account == "default" {
             Config::session()
         } else {
@@ -222,9 +235,19 @@ impl Client {
         Ok(rows)
     }
 
-    pub async fn send(&self, target: &str, text: &str, reply: Option<i32>) -> Result<Sent> {
+    pub async fn send(
+        &self,
+        target: &str,
+        text: &str,
+        reply: Option<i32>,
+        format: crate::SendFormat,
+    ) -> Result<Sent> {
         let peer = self.resolve(target).await?;
-        let msg = InputMessage::new().text(text).reply_to(reply);
+        let msg = match format {
+            crate::SendFormat::Markdown => InputMessage::new().markdown(text).reply_to(reply),
+            crate::SendFormat::Html => InputMessage::new().html(text).reply_to(reply),
+            crate::SendFormat::Plain => InputMessage::new().text(text).reply_to(reply),
+        };
         let sent = self.raw.send_message(peer, msg).await?;
         Ok(Sent { id: sent.id() })
     }
