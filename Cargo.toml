@@ -1,22 +1,6 @@
-[package]
-name = "termgram"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-grammers-client = { version = "0.10", features = ["fs", "markdown", "html"] }
-grammers-mtsender = "0.10"
-grammers-session = "0.10"
-clap = { version = "4", features = ["derive"] }
-tokio = { version = "1", features = ["full"] }
-anyhow = "1"
-rpassword = "7"
-dirs = "7"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-toml = { version = "1", features = ["serde"] }
-libsql = "0.9"
-chrono = { version = "0.4", features = ["serde"] }
+[workspace]
+members = ["crates/core", "crates/cli", "crates/mcp"]
+resolver = "3"
 
 [profile.release]
 opt-level = 3

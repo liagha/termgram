@@ -1,0 +1,15 @@
+[package]
+name = "termgram-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "termgram"
+path = "src/main.rs"
+
+[dependencies]
+termgram = { path = "../core" }
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
