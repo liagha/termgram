@@ -140,6 +140,15 @@ impl SendFormat {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct SendArgs {
+    pub target: String,
+    pub text: String,
+    pub reply: Option<i32>,
+    pub format: Option<String>,
+    pub dates: Vec<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Done {
     pub n: usize,

@@ -217,10 +217,17 @@ async fn main() -> Result<()> {
             text,
             reply,
             format,
-            date,
+            dates,
         } => {
-            let fmt = termgram::SendFormat::parse(format.as_deref())?;
-            let sent = client.send(&target, &text, reply, fmt, date.as_deref()).await?;
+            let sent = client
+                .send(&termgram::SendArgs {
+                    target,
+                    text,
+                    reply,
+                    format,
+                    dates,
+                })
+                .await?;
             println!("sent {}", sent.id);
         }
         Command::Read { target } => {

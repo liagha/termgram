@@ -35,9 +35,9 @@ pub enum Command {
         /// plain, md, or html
         #[arg(long)]
         format: Option<String>,
-        /// exact date text in message to render as a tappable chip
-        #[arg(long)]
-        date: Option<String>,
+        /// exact date text in message to render as a tappable chip; repeat for more
+        #[arg(long = "date", action = clap::ArgAction::Append)]
+        dates: Vec<String>,
     },
     Read {
         /// who: @username, chat id, or contact name

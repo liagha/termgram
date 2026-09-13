@@ -299,26 +299,24 @@ impl Client {
         Ok(rows)
     }
 
-    pub async fn send(
-        &self,
-        target: &str,
-        text: &str,
-        reply: Option<i32>,
-        format: crate::SendFormat,
-        date: Option<&str>,
-    ) -> Result<Sent> {
-        let peer = self.resolve(target).await?;
+    pub async fn send(&self, args: &crate::SendArgs) -> Result<Sent> {
+        let peer = self.resolve(&args.target).await?;
+        let format = crate::SendFormat::parse(args.format.as_deref())?;
         let (t, mut entities) = match format {
-            crate::SendFormat::Markdown => parsers::parse_markdown_message(text),
-            crate::SendFormat::Html => parsers::parse_html_message(text),
-            crate::SendFormat::Plain => (text.to_string(), vec![]),
+            crate::SendFormat::Markdown => parsers::parse_markdown_message(&args.text),
+            crate::SendFormat::Html => parsers::parse_html_message(&args.text),
+            crate::SendFormat::Plain => (args.text.clone(), vec![]),
         };
-        if let Some(fd) = date {
-            entities.push(tl::enums::MessageEntity::FormattedDate(
-                date_entity(&t, fd)?,
-            ));
+        for date in &args.dates {
+            entities.push(tl::enums::MessageEntity::FormattedDate(date_entity(
+                &t,
+                date,
+            )?));
         }
-        let msg = InputMessage::new().text(t).fmt_entities(entities).reply_to(reply);
+        let msg = InputMessage::new()
+            .text(t)
+            .fmt_entities(entities)
+            .reply_to(args.reply);
         let sent = self.raw.send_message(peer, msg).await?;
         Ok(Sent { id: sent.id() })
     }

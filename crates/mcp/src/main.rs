@@ -29,7 +29,19 @@ pub struct SendArgs {
     pub text: String,
     pub reply: Option<i32>,
     pub format: Option<String>,
-    pub date: Option<String>,
+    pub dates: Vec<String>,
+}
+
+impl From<SendArgs> for termgram::SendArgs {
+    fn from(args: SendArgs) -> Self {
+        termgram::SendArgs {
+            target: args.target,
+            text: args.text,
+            reply: args.reply,
+            format: args.format,
+            dates: args.dates,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -250,17 +262,9 @@ impl Server {
         self.run(self.client.messages(&args.target, limit)).await
     }
 
-    #[tool(description = "Send a text message to a chat (format: plain, md, or html)")]
+    #[tool(description = "Send a text message to a chat (format: plain, md, or html; dates: exact date text to render as tappable chips)")]
     async fn send(&self, Parameters(args): Parameters<SendArgs>) -> String {
-        let fmt = match termgram::SendFormat::parse(args.format.as_deref()) {
-            Ok(format) => format,
-            Err(err) => return format!("{err}"),
-        };
-        self.run(
-            self.client
-                .send(&args.target, &args.text, args.reply, fmt, args.date.as_deref()),
-        )
-        .await
+        self.run(self.client.send(&args.into())).await
     }
 
     #[tool(description = "Mark a chat as read")]
