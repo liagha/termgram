@@ -303,7 +303,7 @@ impl Server {
         }
     }
 
-    #[tool(description = "Send text and/or files to a chat (one file sends a photo, document, or voice note by type; several send an album). text.format: plain, markdown, or html. text.dates: exact date text in the message to render as tappable chips. at: future unix timestamp to schedule")]
+    #[tool(description = "Send text and/or files to a chat. files: one file sends a photo, document, or voice note by type, several send an album. text.format: plain, markdown, or html. text.dates: exact date text in the message to render as tappable chips. reply: message id to reply to. topic: forum topic id to send into. at: future unix timestamp to schedule the send")]
     async fn send(&self, Parameters(args): Parameters<termgram::Send>) -> String {
         self.run(self.client.send(&args)).await
     }

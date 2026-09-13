@@ -141,8 +141,11 @@ pub struct Sent {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Format {
+    /// plain text, no formatting
     Plain,
+    /// markdown formatting
     Markdown,
+    /// html formatting
     Html,
 }
 
@@ -159,8 +162,11 @@ impl Format {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Text {
+    /// message body, or media caption when files are set
     pub text: String,
+    /// how to parse the message: plain, markdown, or html
     pub format: Format,
+    /// exact date text in the message to render as tappable chips; repeat for more
     #[serde(default)]
     pub dates: Vec<String>,
 }
@@ -177,12 +183,18 @@ impl Text {
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Send {
+    /// chat: @username, chat id, or contact name
     pub target: String,
+    /// message body, or media caption when files are set
     pub text: Option<Text>,
+    /// one file sends a photo, document, or voice note by type; several send an album
     #[serde(default)]
     pub files: Vec<String>,
+    /// message id to reply to
     pub reply: Option<i32>,
+    /// forum topic id to send into
     pub topic: Option<i32>,
+    /// future unix timestamp to schedule the send
     pub at: Option<u64>,
 }
 
