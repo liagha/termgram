@@ -92,10 +92,10 @@ async fn serve_stream(
                         continue;
                     }
                 }
-                if let Some(filter) = chat_filter {
-                    if chat != filter {
-                        continue;
-                    }
+                if let Some(filter) = chat_filter
+                    && chat != filter
+                {
+                    continue;
                 }
                 let line = serde_json::json!({
                     "chat": chat,

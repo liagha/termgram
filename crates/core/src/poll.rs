@@ -110,10 +110,10 @@ pub(crate) fn sent_id(res: &tl::enums::Updates) -> Option<i32> {
 
 pub(crate) fn new_id(updates: &[tl::enums::Update]) -> Option<i32> {
     for update in updates {
-        if let tl::enums::Update::NewMessage(update) = update {
-            if let tl::enums::Message::Message(msg) = &update.message {
-                return Some(msg.id);
-            }
+        if let tl::enums::Update::NewMessage(update) = update
+            && let tl::enums::Message::Message(msg) = &update.message
+        {
+            return Some(msg.id);
         }
     }
     None

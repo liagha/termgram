@@ -122,10 +122,10 @@ impl Client {
             );
         }
         let name = target.strip_prefix('@').unwrap_or(target);
-        if let Ok(Some(peer)) = self.raw.resolve_username(name).await {
-            if let Ok(Some(peer)) = peer.to_ref().await {
-                return Ok(peer);
-            }
+        if let Ok(Some(peer)) = self.raw.resolve_username(name).await
+            && let Ok(Some(peer)) = peer.to_ref().await
+        {
+            return Ok(peer);
         }
         match self.contact(name).await? {
             Some(peer) => Ok(peer),
@@ -274,7 +274,7 @@ impl Client {
                 out: m.outgoing(),
                 who: m.sender().and_then(|s| s.name()).map(str::to_string),
                 text: m.text().to_string(),
-                media: m.media().as_ref().map(Label::kind).flatten().map(str::to_string),
+                media: m.media().as_ref().and_then(Label::kind).map(str::to_string),
             });
         }
         rows.reverse();
@@ -411,7 +411,7 @@ impl Client {
             .into_iter()
             .map(|(emoji, count)| Reaction { emoji, count })
             .collect();
-        out.sort_by(|a, b| b.count.cmp(&a.count));
+        out.sort_by_key(|r| std::cmp::Reverse(r.count));
         Ok(out)
     }
 
@@ -448,7 +448,7 @@ impl Client {
                         m.outgoing() as i32,
                         m.sender().and_then(|s| s.name()).map(str::to_string).as_deref(),
                         m.text(),
-                        m.media().as_ref().map(Label::kind).flatten(),
+                        m.media().as_ref().and_then(Label::kind),
                     )
                     .await;
                 lines += 1;
@@ -484,20 +484,20 @@ impl Client {
                 },
             });
         }
-        if rows.is_empty() {
-            if let Some(slot) = chat {
-                let peer = self.resolve(slot).await?;
-                let id = self.dialog_key(&peer).await.unwrap_or(0);
-                let name = mirror
-                    .chat_name(id)
-                    .await
-                    .unwrap_or_else(|| slot.to_string());
-                for line in self.searchin(slot, q, 20).await? {
-                    rows.push(Hit {
-                        chat: name.clone(),
-                        line,
-                    });
-                }
+        if rows.is_empty()
+            && let Some(slot) = chat
+        {
+            let peer = self.resolve(slot).await?;
+            let id = self.dialog_key(&peer).await.unwrap_or(0);
+            let name = mirror
+                .chat_name(id)
+                .await
+                .unwrap_or_else(|| slot.to_string());
+            for line in self.searchin(slot, q, 20).await? {
+                rows.push(Hit {
+                    chat: name.clone(),
+                    line,
+                });
             }
         }
         Ok(rows)

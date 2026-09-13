@@ -102,6 +102,7 @@ impl Mirror {
             .await;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn insert_message(
         &self,
         chat: i64,

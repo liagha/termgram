@@ -127,10 +127,10 @@ async fn watch(
         match update {
                 Update::NewMessage(msg) => {
                     let chat = msg.peer_id().bot_api_dialog_id().unwrap_or(0);
-                    if let Some(want) = want {
-                        if chat != want {
-                            continue;
-                        }
+                    if let Some(want) = want
+                        && chat != want
+                    {
+                        continue;
                     }
                     let who = if msg.outgoing() {
                         "you"
@@ -144,10 +144,10 @@ async fn watch(
                     };
                     let mut text =
                         format!("[{}] {}{}: {}", Out::time(msg.date().timestamp()), from, who, msg.text());
-                    if let Some(media) = msg.media() {
-                        if let Some(kind) = termgram::Label::kind(&media) {
-                            text.push_str(&format!(" [{kind}]"));
-                        }
+                    if let Some(media) = msg.media()
+                        && let Some(kind) = termgram::Label::kind(&media)
+                    {
+                        text.push_str(&format!(" [{kind}]"));
                     }
                     println!("{text}");
                     mirror
@@ -158,11 +158,7 @@ async fn watch(
                             msg.outgoing() as i32,
                             msg.sender().and_then(|s| s.name()).map(str::to_string).as_deref(),
                             msg.text(),
-                            msg.media()
-                                .as_ref()
-                                .map(termgram::Label::kind)
-                                .unwrap_or(None)
-                                .as_deref(),
+                            msg.media().as_ref().and_then(termgram::Label::kind),
                         )
                         .await;
                 }

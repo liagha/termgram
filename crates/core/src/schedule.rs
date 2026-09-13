@@ -13,7 +13,7 @@ pub(crate) struct Queue(pub(crate) HashMap<i64, Vec<i32>>);
 impl crate::Client {
     pub async fn scheduled(&self, target: &str) -> Result<Vec<Planned>> {
         let peer = self.resolve(target).await?;
-        let input = peer.clone().into();
+        let input = peer.into();
         let mut rows = vec![];
         let mut keep = vec![];
         if let Some(key) = self.dialog_key(&peer).await {
@@ -73,15 +73,15 @@ impl crate::Client {
             return;
         };
         for raw in matches(res) {
-            if let tl::enums::Message::Message(msg) = raw {
-                if msg.id == id {
-                    keep.push(id);
-                    rows.push(Planned {
-                        id: msg.id,
-                        at: msg.date as i64,
-                        text: msg.message,
-                    });
-                }
+            if let tl::enums::Message::Message(msg) = raw
+                && msg.id == id
+            {
+                keep.push(id);
+                rows.push(Planned {
+                    id: msg.id,
+                    at: msg.date as i64,
+                    text: msg.message,
+                });
             }
         }
     }

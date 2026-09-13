@@ -36,7 +36,7 @@ impl crate::Client {
         let fresh = |lines: Vec<Line>| -> Vec<Line> {
             lines
                 .into_iter()
-                .filter(|l| after_id.map_or(true, |a| l.id > a))
+                .filter(|l| after_id.is_none_or(|a| l.id > a))
                 .collect()
         };
         if let Some(slot) = target {
@@ -74,8 +74,8 @@ impl crate::Client {
                     .map(str::to_string),
             };
             let chat = msg.peer_id().bot_api_dialog_id().unwrap_or(0);
-            let id_ok = after_id.map_or(true, |a| line.id > a);
-            let chat_ok = wanted.map_or(true, |w| chat == w);
+            let id_ok = after_id.is_none_or(|a| line.id > a);
+            let chat_ok = wanted.is_none_or(|w| chat == w);
             if id_ok && chat_ok {
                 return Ok(vec![line]);
             }
@@ -116,11 +116,11 @@ impl crate::Client {
         let mut title = None;
         let mut about = String::new();
         for u in &page.users {
-            if let tl::enums::User::User(u) = u {
-                if u.id == bare {
-                    name = presence::who(&u);
-                    break;
-                }
+            if let tl::enums::User::User(u) = u
+                && u.id == bare
+            {
+                name = presence::who(u);
+                break;
             }
         }
         for c in &page.chats {
@@ -183,11 +183,11 @@ impl crate::Client {
                 unread = d.unread_count;
             }
             for u in &page.users {
-                if let tl::enums::User::User(u) = u {
-                    if u.id == bare {
-                        name = presence::who(&u);
-                        break;
-                    }
+                if let tl::enums::User::User(u) = u
+                    && u.id == bare
+                {
+                    name = presence::who(u);
+                    break;
                 }
             }
             for c in &page.chats {
@@ -212,32 +212,30 @@ impl crate::Client {
         if matches!(
             peer.id.kind(),
             PeerKind::Channel | PeerKind::Chat
-        ) {
-            if let Ok(
-                tl::enums::messages::ChatFull::Full(page),
-            ) = self
-                .raw
-                .invoke(
-                    &tl::functions::messages::GetFullChat {
-                        chat_id: bare,
-                    },
-                )
-                .await
-            {
-                about = page.full_chat.about();
-                for c in &page.chats {
-                    if c.id() == bare {
-                        match c {
-                            tl::enums::Chat::Chat(v) => {
-                                name = v.title.clone()
-                            }
-                            tl::enums::Chat::Channel(v) => {
-                                name = v.title.clone()
-                            }
-                            _ => {}
+        ) && let Ok(
+            tl::enums::messages::ChatFull::Full(page),
+        ) = self
+            .raw
+            .invoke(
+                &tl::functions::messages::GetFullChat {
+                    chat_id: bare,
+                },
+            )
+            .await
+        {
+            about = page.full_chat.about();
+            for c in &page.chats {
+                if c.id() == bare {
+                    match c {
+                        tl::enums::Chat::Chat(v) => {
+                            name = v.title.clone()
                         }
-                        break;
+                        tl::enums::Chat::Channel(v) => {
+                            name = v.title.clone()
+                        }
+                        _ => {}
                     }
+                    break;
                 }
             }
         }
@@ -338,7 +336,7 @@ impl crate::Client {
             .iter()
             .filter_map(|u| match u {
                 tl::enums::User::User(u) => {
-                    Some(Member { name: presence::who(&u) })
+                    Some(Member { name: presence::who(u) })
                 }
                 _ => None,
             })
@@ -379,7 +377,7 @@ impl crate::Client {
             .iter()
             .filter_map(|u| match u {
                 tl::enums::User::User(u) => {
-                    Some(Member { name: presence::who(&u) })
+                    Some(Member { name: presence::who(u) })
                 }
                 _ => None,
             })
@@ -587,7 +585,7 @@ impl crate::Client {
     ) -> Result<Ack> {
         let hash = link
             .split('/')
-            .last()
+            .next_back()
             .unwrap_or(link);
         self.raw
             .invoke(
@@ -816,14 +814,12 @@ impl crate::Client {
         Ok(page
             .sets
             .into_iter()
-            .filter_map(|s| match s {
-                tl::enums::StickerSet::Set(s) => {
-                    Some(Identity {
-                        name: s.title,
-                        handle: Some(s.short_name),
-                        id: s.id,
-                    })
-                }
+            .map(|s| match s {
+                tl::enums::StickerSet::Set(s) => Identity {
+                    name: s.title,
+                    handle: Some(s.short_name),
+                    id: s.id,
+                },
             })
             .collect())
     }

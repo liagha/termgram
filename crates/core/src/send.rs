@@ -120,10 +120,10 @@ impl crate::Client {
             if args.at.is_some() {
                 bail!("can't schedule an album");
             }
-            if let Some(text) = &args.text {
-                if text.format != Format::Plain || !text.dates.is_empty() {
-                    bail!("album captions can only be plain text");
-                }
+            if let Some(text) = &args.text
+                && (text.format != Format::Plain || !text.dates.is_empty())
+            {
+                bail!("album captions can only be plain text");
             }
             let mut media = vec![];
             for path in &args.files {
@@ -133,10 +133,10 @@ impl crate::Client {
                     Kind::Document | Kind::Voice => InputMedia::new().document(file),
                 });
             }
-            if let Some((caption, _)) = rich {
-                if let Some(last) = media.last_mut() {
-                    *last = std::mem::take(last).caption(caption);
-                }
+            if let Some((caption, _)) = rich
+                && let Some(last) = media.last_mut()
+            {
+                *last = std::mem::take(last).caption(caption);
             }
             self.raw
                 .send_album(peer, media)
@@ -206,14 +206,14 @@ impl crate::Client {
             Some(at) => msg.schedule_date(Some(SystemTime::UNIX_EPOCH + Duration::from_secs(at))),
             None => msg,
         };
-        let sent = self.raw.send_message(peer.clone(), msg).await?;
+        let sent = self.raw.send_message(peer, msg).await?;
         let id = sent.id();
-        if at.is_some() {
-            if let Some(key) = self.dialog_key(&peer).await {
-                let mut queue = self.read_queue();
-                queue.0.entry(key).or_default().push(id);
-                let _ = self.write_queue(&queue);
-            }
+        if at.is_some()
+            && let Some(key) = self.dialog_key(&peer).await
+        {
+            let mut queue = self.read_queue();
+            queue.0.entry(key).or_default().push(id);
+            let _ = self.write_queue(&queue);
         }
         Ok(id)
     }
