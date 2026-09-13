@@ -1,8 +1,8 @@
 # Contributing
 
-termgram works and is in use every day — but it is a side project, and the
+termgram works and is in use every day, but it is a side project: the
 maintainer's time mostly goes to using it, not building it. If you want the
-project to keep moving, **you are welcome to drive it.**
+project to keep moving, drive it.
 
 ## Looking for maintainers
 
@@ -19,13 +19,13 @@ cargo build --release
 cargo clippy --all -- -D warnings
 ```
 
-Rust stable, edition 2024. There is no test suite yet — verification is
-manual. A PR that adds tests is the highest-value contribution there is.
+Rust stable, edition 2024. There is no test suite yet; verification is manual.
+A PR that adds tests is the most useful thing you can send.
 
 ## Project rules
 
-These are what keep the codebase small, fast and consistent — please respect
-them in every change.
+These keep the codebase small, fast and consistent. Please respect them in
+every change.
 
 - **One unified `Send` model.** The CLI and MCP server share the same send
   pipeline (`crates/core/src/send.rs`): same args, same formats
@@ -49,4 +49,4 @@ Small, focused commits, one logical change each. Message style:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT; see [LICENSE](LICENSE).
