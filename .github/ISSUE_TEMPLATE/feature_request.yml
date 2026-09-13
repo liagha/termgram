@@ -1,0 +1,33 @@
+name: Feature request
+description: A capability termgram should have
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task you couldn't accomplish with termgram as it is.
+    validations:
+      required: true
+  - type: textarea
+    id: solve
+    attributes:
+      label: Proposed solution
+      description: CLI command, MCP tool, SSE event — sketch it, including the argument surface.
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where should it live?
+      options:
+        - CLI only
+        - MCP tool
+        - CLI + MCP (parity)
+        - SSE stream
+        - Core (shared)
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Notes
+      description: Crates it touches, references to the Telegram API you'd like it to map to.

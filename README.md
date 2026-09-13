@@ -264,9 +264,12 @@ messages.
 
 ## Contributing
 
-Issues and pull requests are welcome. Keep the workspace consistent: one
-unified `Send` model across CLI and MCP, parity between CLI commands and MCP
-tools, and no secrets at any layer. Runs on stable Rust (edition 2024).
+This project is **actively looking for maintainers**. The current maintainer
+uses termgram daily but isn't adding features — if you want it to keep
+evolving, the maintainer seat can be yours: report bugs, open issues for
+direction, send PRs, or volunteer to co-maintain. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md). Small PRs merge fast; big ones get
+discussed in an issue first.
 
 ## License
 

@@ -1,0 +1,27 @@
+name: Bug report
+description: Something broken — crashes, wrong behavior, failed send
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: The command or tool you ran, and what went wrong.
+    validations:
+      required: true
+  - type: input
+    id: expected
+    attributes:
+      label: Expected
+      description: What should have happened instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `termgram --version` (or the commit hash you built).
+  - type: textarea
+    id: output
+    attributes:
+      label: Debug output
+      description: Paste `RUST_BACKTRACE=1 termgram <cmd> ... 2>&1` if it panics.
+      render: shell
