@@ -2603,6 +2603,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "termgram-notify"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde_json",
+ "termgram",
+ "tokio",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"

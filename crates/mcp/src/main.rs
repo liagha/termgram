@@ -1,13 +1,23 @@
 use rmcp::{
     handler::server::wrapper::Parameters,
+    model::{CustomNotification, ServerNotification},
     schemars, tool, tool_router,
     transport::stdio,
     ServiceExt,
 };
 use serde::Deserialize;
+use serde_json::json;
+use std::collections::HashSet;
 use std::future::Future;
+use std::sync::{Arc, Mutex};
 
-use termgram::Client;
+use termgram::{Client, Update};
+
+#[derive(Default)]
+pub struct Watch {
+    pub on: bool,
+    pub chats: HashSet<i64>,
+}
 
 #[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 pub struct Empty {}
@@ -52,6 +62,12 @@ pub struct WaitArgs {
     pub target: Option<String>,
     pub after: Option<i32>,
     pub timeout: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NotifyArgs {
+    pub on: bool,
+    pub target: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -236,6 +252,7 @@ pub struct ImportArgs {
 
 struct Server {
     client: Client,
+    watch: Arc<Mutex<Watch>>,
 }
 
 impl Server {
@@ -330,6 +347,42 @@ impl Server {
                 .wait(args.target.as_deref(), args.after, timeout),
         )
         .await
+    }
+
+    #[tool(description = "Control the server-to-client push filter for new-message notifications. on=true with target: push only that chat. on=true: push every chat. on=false with target: stop pushing that chat. on=false: stop all pushes")]
+    async fn notify(&self, Parameters(args): Parameters<NotifyArgs>) -> String {
+        let chat_id = match args.target.as_deref() {
+            Some(slot) => match self.client.resolve(slot).await {
+                Ok(peer) => peer.id.bot_api_dialog_id().unwrap_or(0),
+                Err(err) => return format!("error: {err}"),
+            },
+            None => 0,
+        };
+        let mut watch = self.watch.lock().unwrap();
+        match args.on {
+            true => match args.target {
+                Some(_) => {
+                    watch.chats.insert(chat_id);
+                    watch.on = true;
+                }
+                None => {
+                    watch.chats.clear();
+                    watch.on = true;
+                }
+            },
+            false => match args.target {
+                Some(_) => {
+                    watch.chats.remove(&chat_id);
+                    watch.on = !watch.chats.is_empty();
+                }
+                None => {
+                    watch.on = false;
+                    watch.chats.clear();
+                }
+            },
+        }
+        let chats = watch.chats.iter().copied().collect::<Vec<_>>();
+        serde_json::json!({ "on": watch.on, "chats": chats }).to_string()
     }
 
     #[tool(description = "Send text and/or files to a chat. files: one file sends a photo, document, or voice note by type, several send an album. text.format: plain, markdown, or html. text.dates: exact date text in the message to render as tappable chips. reply: message id to reply to. topic: forum topic id to send into. at: future unix timestamp to schedule the send")]
@@ -652,7 +705,40 @@ async fn main() -> anyhow::Result<()> {
     } else {
         eprintln!("termgram-mcp: not logged in - run `termgram login` in a terminal first");
     }
-    let service = Server { client }.serve(stdio()).await?;
+    let mut events = client.signals();
+    let watch = Arc::new(Mutex::new(Watch::default()));
+    let service = Server { client, watch: watch.clone() }.serve(stdio()).await?;
+    let peer = service.peer().clone();
+    tokio::spawn(async move {
+        while let Ok(update) = events.recv().await {
+            let Update::NewMessage(msg) = update else {
+                continue;
+            };
+            let chat = msg.peer_id().bot_api_dialog_id().unwrap_or(0);
+            {
+                let w = watch.lock().unwrap();
+                if !w.on || (!w.chats.is_empty() && !w.chats.contains(&chat)) {
+                    continue;
+                }
+            }
+            let line = json!({
+                "chat": chat,
+                "id": msg.id(),
+                "at": msg.date().timestamp(),
+                "out": msg.outgoing(),
+                "from": msg.sender().and_then(|s| s.name()),
+                "text": msg.text().to_string(),
+                "media": msg.media().as_ref().and_then(termgram::Label::kind),
+            });
+            let notif = ServerNotification::CustomNotification(CustomNotification::new(
+                "notifications/termgram/message",
+                Some(line),
+            ));
+            if peer.send_notification(notif).await.is_err() {
+                break;
+            }
+        }
+    });
     service.waiting().await?;
     Ok(())
 }

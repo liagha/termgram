@@ -1,13 +1,11 @@
 [package]
-name = "termgram-mcp"
+name = "termgram-notify"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
 [dependencies]
 termgram = { path = "../core" }
-rmcp = { version = "3.3", features = ["transport-io"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
-serde = { version = "1", features = ["derive"] }
 serde_json = "1"
