@@ -104,13 +104,17 @@ impl crate::Client {
             let Some((raw, entities)) = rich else {
                 bail!("nothing to send: give a text or a file")
             };
-            let msg = InputMessage::new().text(raw).fmt_entities(entities).reply_to(args.reply);
+            let msg = InputMessage::new()
+                .text(raw)
+                .fmt_entities(entities)
+                .reply_to(args.reply.or(args.topic));
             vec![self.send_one(peer, msg, args.at).await?]
         } else if args.files.len() == 1 {
             let mut msg = self.single(&args.files[0]).await?;
             if let Some((caption, entities)) = rich {
                 msg = msg.text(caption).fmt_entities(entities);
             }
+            msg = msg.reply_to(args.reply.or(args.topic));
             vec![self.send_one(peer, msg, args.at).await?]
         } else {
             if args.at.is_some() {

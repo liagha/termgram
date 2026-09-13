@@ -131,6 +131,21 @@ impl Mirror {
         rows.next().await.ok().flatten()?.get::<String>(0).ok()
     }
 
+    pub async fn count(&self, chat: i64) -> Result<i64> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT COUNT(*) FROM messages WHERE chat = ?1",
+                libsql::params![chat],
+            )
+            .await?;
+        Ok(rows
+            .next()
+            .await?
+            .map(|row| row.get::<i64>(0).unwrap_or_default())
+            .unwrap_or_default())
+    }
+
     pub async fn lines(&self, chat: &str, limit: usize) -> Result<Vec<Row>> {
         let mut rows = self
             .conn

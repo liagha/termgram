@@ -367,6 +367,16 @@ impl Client {
     }
 
     pub async fn search(&self, q: &str, chat: Option<&str>) -> Result<Vec<Hit>> {
+        if let Some(slot) = chat {
+            let peer = self.resolve(slot).await?;
+            let id = self.dialog_key(&peer).await.unwrap_or(0);
+            let mirror = Mirror::open(&self.mirror()).await?;
+            let unsynced = mirror.count(id).await? == 0;
+            drop(mirror);
+            if unsynced {
+                self.sync(200).await?;
+            }
+        }
         let mirror = Mirror::open(&self.mirror()).await?;
         let mut rows = vec![];
         for row in mirror.search(q, chat).await? {

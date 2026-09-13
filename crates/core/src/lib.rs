@@ -4,11 +4,13 @@ pub mod config;
 pub mod draft;
 pub mod media;
 pub mod mirror;
+pub mod poll;
 pub mod presence;
 pub mod profile;
 pub mod schedule;
 pub mod search;
 pub mod send;
+pub mod topics;
 
 pub use client::Client;
 pub use config::Config;
@@ -120,6 +122,12 @@ pub struct Member {
 }
 
 #[derive(Debug, Serialize)]
+pub struct Topic {
+    pub id: i32,
+    pub title: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct Sent {
     pub ids: Vec<i32>,
 }
@@ -168,6 +176,7 @@ pub struct Send {
     #[serde(default)]
     pub files: Vec<String>,
     pub reply: Option<i32>,
+    pub topic: Option<i32>,
     pub at: Option<u64>,
 }
 

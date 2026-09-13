@@ -35,6 +35,9 @@ pub enum Command {
         files: Vec<String>,
         #[arg(long)]
         reply: Option<i32>,
+        /// forum topic id to send into
+        #[arg(long)]
+        topic: Option<i32>,
         /// plain, md, or html
         #[arg(long)]
         format: Option<String>,
@@ -46,6 +49,24 @@ pub enum Command {
         at: Option<String>,
     },
     Read {
+        /// who: @username, chat id, or contact name
+        target: String,
+    },
+    Poll {
+        /// who: @username, chat id, or contact name
+        target: String,
+        question: String,
+        /// 2 to 10 answer choices
+        #[arg(value_name = "OPTION", action = clap::ArgAction::Append)]
+        options: Vec<String>,
+        /// hide who voted for what
+        #[arg(long)]
+        anon: bool,
+        /// allow more than one answer
+        #[arg(long)]
+        multi: bool,
+    },
+    Topics {
         /// who: @username, chat id, or contact name
         target: String,
     },

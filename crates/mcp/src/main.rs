@@ -24,6 +24,28 @@ pub struct MessageArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PollArgs {
+    pub target: String,
+    pub question: String,
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub anon: bool,
+    #[serde(default)]
+    pub multi: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TopicsArgs {
+    pub target: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WatchArgs {
+    pub target: Option<String>,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SignArgs {
     pub target: String,
     pub id: i32,
@@ -239,6 +261,28 @@ impl Server {
     async fn messages(&self, Parameters(args): Parameters<MessageArgs>) -> String {
         let limit = args.limit.unwrap_or(20) as usize;
         self.run(self.client.messages(&args.target, limit)).await
+    }
+
+    #[tool(description = "Create a poll in a chat with 2 to 10 answer options")]
+    async fn poll(&self, Parameters(args): Parameters<PollArgs>) -> String {
+        self.run(
+            self.client
+                .poll(&args.target, &args.question, &args.options, args.anon, args.multi),
+        )
+        .await
+    }
+
+    #[tool(description = "List forum topics in a forum-enabled chat")]
+    async fn topics(&self, Parameters(args): Parameters<TopicsArgs>) -> String {
+        self.run(self.client.topics(&args.target)).await
+    }
+
+    #[tool(description = "Snapshot the last messages of a chat (or the latest dialogs when target is omitted); does not follow a live stream")]
+    async fn watch(&self, Parameters(args): Parameters<WatchArgs>) -> String {
+        match args.target {
+            Some(t) => self.run(self.client.messages(&t, args.limit.unwrap_or(20).max(1) as usize)).await,
+            None => self.run(self.client.dialogs()).await,
+        }
     }
 
     #[tool(description = "Send text and/or files to a chat (one file sends a photo, document, or voice note by type; several send an album). text.format: plain, markdown, or html. text.dates: exact date text in the message to render as tappable chips. at: future unix timestamp to schedule")]

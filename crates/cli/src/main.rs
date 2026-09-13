@@ -247,6 +247,7 @@ async fn main() -> Result<()> {
             text,
             files,
             reply,
+            topic,
             format,
             dates,
             at,
@@ -261,6 +262,7 @@ async fn main() -> Result<()> {
                 }),
                 files,
                 reply,
+                topic,
                 at: at.as_deref().map(parse_at).transpose()?,
             };
             let sent = client.send(&args).await?;
@@ -274,6 +276,30 @@ async fn main() -> Result<()> {
             println!("{}", client.mark_as_read(&target).await?.text);
         }
         Command::Watch { target, once } => watch(&mut client, target.as_deref(), once).await?,
+        Command::Poll {
+            target,
+            question,
+            options,
+            anon,
+            multi,
+        } => {
+            for id in client
+                .poll(&target, &question, &options, anon, multi)
+                .await?
+                .ids
+            {
+                println!("sent {id}");
+            }
+        }
+        Command::Topics { target } => {
+            let rows = client.topics(&target).await?;
+            dump(cli.json, &rows)?;
+            if !cli.json {
+                for row in rows {
+                    println!("[{}] {}", row.id, row.title);
+                }
+            }
+        }
         Command::Sync { limit } => {
             let s = client.sync(limit).await?;
             dump(cli.json, &s)?;
