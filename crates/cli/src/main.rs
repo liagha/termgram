@@ -9,18 +9,43 @@ use cli::{Cli, Command, What};
 use format::Out;
 use termgram::{Client, Mirror, Update};
 
-async fn watch(client: &mut Client, target: Option<&str>) -> Result<()> {
+async fn watch(client: &mut Client, target: Option<&str>, once: bool) -> Result<()> {
     let want = match target {
         Some(t) => Some(client.resolve(t).await?.id.bot_api_dialog_id().unwrap_or(0)),
         None => None,
     };
+    if once {
+        let t = target.context("watch --once needs a target")?;
+        for line in client.messages(t, 20).await? {
+            let who = if line.out {
+                "you".to_string()
+            } else {
+                line.who.unwrap_or_else(|| "?".to_string())
+            };
+            let mut text = format!("[{}] {}: {}", Out::time(line.at), who, line.text);
+            if let Some(kind) = line.media {
+                text.push_str(&format!(" [{kind}]"));
+            }
+            println!("{text}");
+        }
+        return Ok(());
+    }
     let mirror = Mirror::open(&client.mirror()).await?;
-    let mut iter = client.raw.iter_dialogs();
-    while let Some(dialog) = iter.next().await? {
+    let mut dirs = client.raw.iter_dialogs();
+    let mut names = std::collections::HashMap::new();
+    while let Some(dialog) = dirs.next().await? {
+        let id = dialog.peer_id().bot_api_dialog_id().unwrap_or(0);
+        let name = dialog
+            .peer
+            .name()
+            .map(str::to_string)
+            .or_else(|| dialog.peer.username().map(str::to_string))
+            .unwrap_or_default();
+        names.insert(id, name.clone());
         mirror
             .upsert_chat(
-                dialog.peer_id().bot_api_dialog_id().unwrap_or(0),
-                dialog.peer.name().unwrap_or(""),
+                id,
+                &name,
                 dialog.peer.username().map(str::to_string).as_deref(),
                 0,
                 None,
@@ -45,8 +70,13 @@ async fn watch(client: &mut Client, target: Option<&str>) -> Result<()> {
                     } else {
                         msg.sender().and_then(|s| s.name()).unwrap_or("?")
                     };
+                    let from = if target.is_none() {
+                        format!("{}: ", names.get(&chat).map(String::as_str).unwrap_or("?"))
+                    } else {
+                        String::new()
+                    };
                     let mut text =
-                        format!("[{}] {}: {}", Out::time(msg.date().timestamp()), who, msg.text());
+                        format!("[{}] {}{}: {}", Out::time(msg.date().timestamp()), from, who, msg.text());
                     if let Some(media) = msg.media() {
                         if let Some(kind) = termgram::Label::kind(&media) {
                             text.push_str(&format!(" [{kind}]"));
@@ -243,7 +273,7 @@ async fn main() -> Result<()> {
         Command::Read { target } => {
             println!("{}", client.mark_as_read(&target).await?.text);
         }
-        Command::Watch { target } => watch(&mut client, target.as_deref()).await?,
+        Command::Watch { target, once } => watch(&mut client, target.as_deref(), once).await?,
         Command::Sync { limit } => {
             let s = client.sync(limit).await?;
             dump(cli.json, &s)?;

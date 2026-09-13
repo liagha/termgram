@@ -50,9 +50,12 @@ pub enum Command {
         target: String,
     },
     Watch {
-        /// who: @username, chat id, or contact name
+        /// who: @username, chat id, or contact name; omit to follow every chat
         #[arg(long)]
         target: Option<String>,
+        /// print the last messages of the chat and exit instead of following
+        #[arg(long)]
+        once: bool,
     },
     Sync {
         #[arg(default_value_t = 200)]
