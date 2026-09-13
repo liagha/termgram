@@ -9,7 +9,37 @@ use cli::{Cli, Command, What};
 use format::Out;
 use termgram::{Client, Mirror, Update};
 
-async fn watch(client: &mut Client, target: Option<&str>, once: bool) -> Result<()> {
+async fn watch(
+    client: &mut Client,
+    target: Option<&str>,
+    once: bool,
+    unread: bool,
+    every: u64,
+) -> Result<()> {
+    if unread {
+        let mut seen = std::collections::HashMap::new();
+        loop {
+            for dialog in client.unread().await? {
+                let prev = seen.get(&dialog.id).copied().unwrap_or(0);
+                if dialog.unread > prev {
+                    seen.insert(dialog.id, dialog.unread);
+                    let last = dialog.last.unwrap_or_default();
+                    let arrow = if dialog.out { "-> " } else { "" };
+                    println!(
+                        "[{}] {} ({}): {arrow}{}",
+                        Out::time(dialog.at.unwrap_or(0)),
+                        dialog.name,
+                        dialog.unread,
+                        last
+                    );
+                }
+            }
+            if once {
+                return Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(every)).await;
+        }
+    }
     let want = match target {
         Some(t) => Some(client.resolve(t).await?.id.bot_api_dialog_id().unwrap_or(0)),
         None => None,
@@ -275,7 +305,12 @@ async fn main() -> Result<()> {
         Command::Read { target } => {
             println!("{}", client.mark_as_read(&target).await?.text);
         }
-        Command::Watch { target, once } => watch(&mut client, target.as_deref(), once).await?,
+        Command::Watch {
+            target,
+            once,
+            unread,
+            every,
+        } => watch(&mut client, target.as_deref(), once, unread, every).await?,
         Command::Poll {
             target,
             question,
@@ -354,16 +389,30 @@ async fn main() -> Result<()> {
             id,
             emoji,
             remove,
+            big,
         } => {
             match (emoji, remove) {
                 (Some(emoji), false) => {
-                    println!("{}", client.react(&target, id, Some(&emoji), false).await?.text);
+                    println!(
+                        "{}",
+                        client.react(&target, id, Some(&emoji), false, big).await?.text
+                    );
                 }
                 (None, true) => {
-                    println!("{}", client.react(&target, id, None, true).await?.text);
+                    println!("{}", client.react(&target, id, None, true, false).await?.text);
                 }
                 (Some(_), true) => bail!("pick an emoji or --remove, not both"),
                 (None, false) => bail!("need an emoji or --remove"),
+            }
+        }
+        Command::Reactions { target, id } => {
+            let rows = client.reactions(&target, id).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for reaction in rows {
+                println!("{} x{}", reaction.emoji, reaction.count);
             }
         }
         Command::Contacts => {

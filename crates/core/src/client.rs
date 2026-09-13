@@ -17,8 +17,39 @@ use tokio::sync::mpsc;
 use crate::config::Config;
 use crate::mirror::Mirror;
 use crate::{
-    Ack, Contact, Dialog, Done, Folder, Hit, Identity, Label, Line, Member, Path, Pinned, Summary,
+    Ack, Contact, Dialog, Done, Folder, Hit, Identity, Label, Line, Member, Path, Pinned, Reaction,
+    Summary,
 };
+
+const MAX_FOLDER_TITLE: usize = 12;
+
+fn folder_filter(
+    id: i32,
+    title: &str,
+    include_peers: Vec<tl::enums::InputPeer>,
+) -> tl::enums::DialogFilter {
+    tl::enums::DialogFilter::Filter(tl::types::DialogFilter {
+        contacts: false,
+        non_contacts: false,
+        groups: false,
+        broadcasts: false,
+        bots: false,
+        exclude_muted: false,
+        exclude_read: false,
+        exclude_archived: false,
+        title_noanimate: false,
+        id,
+        title: tl::enums::TextWithEntities::Entities(tl::types::TextWithEntities {
+            text: title.chars().take(MAX_FOLDER_TITLE).collect(),
+            entities: vec![],
+        }),
+        emoticon: None,
+        color: None,
+        pinned_peers: vec![],
+        include_peers,
+        exclude_peers: vec![],
+    })
+}
 
 pub struct Client {
     pub raw: Raw,
@@ -216,6 +247,15 @@ impl Client {
         Ok(rows)
     }
 
+    pub async fn unread(&self) -> Result<Vec<Dialog>> {
+        Ok(self
+            .dialogs()
+            .await?
+            .into_iter()
+            .filter(|dialog| dialog.unread > 0)
+            .collect())
+    }
+
     pub async fn messages(&self, target: &str, limit: usize) -> Result<Vec<Line>> {
         let peer = self.resolve(target).await?;
         let mut rows = vec![];
@@ -307,20 +347,65 @@ impl Client {
     pub async fn react(
         &self,
         target: &str,
-        id: i32,
+        id: Option<i32>,
         emoji: Option<&str>,
         remove: bool,
+        big: bool,
     ) -> Result<Ack> {
         let peer = self.resolve(target).await?;
-        let reactions = if remove {
+        let id = match id {
+            Some(id) => id,
+            None => {
+                let last = self
+                    .messages(target, 1)
+                    .await?
+                    .pop()
+                    .context("no messages in the chat to react to")?;
+                last.id
+            }
+        };
+        let base = if remove {
             InputReactions::remove()
         } else {
             InputReactions::emoticon(emoji.unwrap_or_default())
         };
+        let reactions = if big { base.big() } else { base };
         self.raw.send_reactions(peer, id, reactions).await?;
         Ok(Ack {
             text: "reacted".into(),
         })
+    }
+
+    pub async fn reactions(&self, target: &str, id: i32) -> Result<Vec<Reaction>> {
+        let peer = self.resolve(target).await?;
+        let res = self
+            .raw
+            .invoke(&tl::functions::messages::GetMessageReactionsList {
+                peer: peer.into(),
+                id,
+                reaction: None,
+                offset: None,
+                limit: 100,
+            })
+            .await?;
+        let tl::enums::messages::MessageReactionsList::List(page) = res;
+        let mut rows: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+        for raw in page.reactions {
+            let tl::enums::MessagePeerReaction::Reaction(entry) = raw;
+            let emoji = match &entry.reaction {
+                tl::enums::Reaction::Emoji(e) => e.emoticon.clone(),
+                tl::enums::Reaction::CustomEmoji(_) => "custom".to_string(),
+                tl::enums::Reaction::Paid => "paid".to_string(),
+                tl::enums::Reaction::Empty => "?".to_string(),
+            };
+            *rows.entry(emoji).or_insert(0) += 1;
+        }
+        let mut out: Vec<Reaction> = rows
+            .into_iter()
+            .map(|(emoji, count)| Reaction { emoji, count })
+            .collect();
+        out.sort_by(|a, b| b.count.cmp(&a.count));
+        Ok(out)
     }
 
     pub async fn sync(&self, limit: usize) -> Result<Summary> {
@@ -392,6 +477,22 @@ impl Client {
                 },
             });
         }
+        if rows.is_empty() {
+            if let Some(slot) = chat {
+                let peer = self.resolve(slot).await?;
+                let id = self.dialog_key(&peer).await.unwrap_or(0);
+                let name = mirror
+                    .chat_name(id)
+                    .await
+                    .unwrap_or_else(|| slot.to_string());
+                for line in self.searchin(slot, q, 20).await? {
+                    rows.push(Hit {
+                        chat: name.clone(),
+                        line,
+                    });
+                }
+            }
+        }
         Ok(rows)
     }
 
@@ -442,20 +543,13 @@ impl Client {
     }
 
     pub async fn folders(&self) -> Result<Vec<Folder>> {
-        let res = self
-            .raw
-            .invoke(&tl::functions::messages::GetDialogFilters {})
-            .await?;
-        let tl::enums::messages::DialogFilters::Filters(filters) = res;
         let mut rows = vec![];
-        for raw in filters.filters {
-            if let tl::enums::DialogFilter::Filter(folder) = raw {
-                let tl::enums::TextWithEntities::Entities(text) = folder.title;
-                rows.push(Folder {
-                    id: folder.id,
-                    title: text.text,
-                });
-            }
+        for folder in self.dialog_filters().await? {
+            let tl::enums::TextWithEntities::Entities(title) = folder.title;
+            rows.push(Folder {
+                id: folder.id,
+                title: title.text,
+            });
         }
         Ok(rows)
     }
@@ -464,51 +558,20 @@ impl Client {
         if include.is_empty() {
             bail!("folder needs chats - pass --include <target> (repeatable)");
         }
-        let mut include_peers = vec![];
+        let mut peers = Vec::with_capacity(include.len());
         for slot in include {
-            let peer = self.resolve(slot).await?;
-            include_peers.push(peer.into());
+            peers.push(self.resolve(slot).await?.into());
         }
-        let res = self
-            .raw
-            .invoke(&tl::functions::messages::GetDialogFilters {})
-            .await?;
-        let tl::enums::messages::DialogFilters::Filters(filters) = res;
-        let mut next = 1;
-        for raw in filters.filters {
-            if let tl::enums::DialogFilter::Filter(folder) = raw {
-                next = next.max(folder.id + 1);
-            }
-        }
-        let folder = tl::enums::DialogFilter::Filter(tl::types::DialogFilter {
-            contacts: false,
-            non_contacts: false,
-            groups: false,
-            broadcasts: false,
-            bots: false,
-            exclude_muted: false,
-            exclude_read: false,
-            exclude_archived: false,
-            title_noanimate: false,
-            id: next,
-            title: tl::enums::TextWithEntities::Entities(tl::types::TextWithEntities {
-                text: title.chars().take(12).collect(),
-                entities: vec![],
-            }),
-            emoticon: None,
-            color: None,
-            pinned_peers: vec![],
-            include_peers,
-            exclude_peers: vec![],
-        });
+        let id = self.dialog_filters().await?.iter().map(|f| f.id).max().unwrap_or(0) + 1;
+        let filter = folder_filter(id, title, peers);
         self.raw
             .invoke(&tl::functions::messages::UpdateDialogFilter {
-                id: next,
-                filter: Some(folder),
+                id,
+                filter: Some(filter),
             })
             .await?;
         Ok(Folder {
-            id: next,
+            id,
             title: title.to_string(),
         })
     }
@@ -523,6 +586,21 @@ impl Client {
         Ok(Ack {
             text: format!("folder {id} removed"),
         })
+    }
+
+    async fn dialog_filters(&self) -> Result<Vec<tl::types::DialogFilter>> {
+        let res = self
+            .raw
+            .invoke(&tl::functions::messages::GetDialogFilters {})
+            .await?;
+        let tl::enums::messages::DialogFilters::Filters(filters) = res;
+        let mut rows = vec![];
+        for raw in filters.filters {
+            if let tl::enums::DialogFilter::Filter(folder) = raw {
+                rows.push(folder);
+            }
+        }
+        Ok(rows)
     }
 
     pub async fn pinned(&self, target: &str, limit: i32) -> Result<Vec<Pinned>> {

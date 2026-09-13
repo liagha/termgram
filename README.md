@@ -56,6 +56,17 @@ termgram topics <chat>      # list topics as id + title
 
 Combine with `send --topic <id>`.
 
+## Reactions
+
+```sh
+termgram react saved <id> 🎉           # react with an emoji
+termgram react saved <id> ❤️ --big     # big animated reaction
+termgram react saved                   # react to the last message
+termgram reactions saved <id>          # list who reacted with what
+```
+
+Reacting requires Telegram Premium; reading reactions works regardless.
+
 ## Local search mirror
 
 ```sh
@@ -67,13 +78,15 @@ termgram searchall           # global Telegram search (API)
 termgram searchin <chat>     # search inside one chat (API)
 ```
 
-Searching a chat that is not mirrored auto-syncs it first.
+Chat names are matched case-insensitively (`amir.a` = `AMIR.A`). Searching a
+chat that is not mirrored auto-syncs it first; if the mirror still has nothing
+for that chat, falls back to a live API search.
 
 ## More commands
 
 ```
 me men dialogs messages read watch
-send edit delete forward pin react
+send edit delete forward pin react reactions
 drafts draft profile set block unblock
 typing status scheduled cancel
 contacts folders folder-new folder-rm pinned members
@@ -83,6 +96,8 @@ poll topics
 ```
 
 `watch <target>` tails a chat live; `watch <target> --once` prints a snapshot.
+`watch --unread` surveys chats with unread messages (refreshes every 30s by
+default, `--every <secs>` to change).
 
 ## MCP server
 
@@ -101,9 +116,10 @@ Run `termgram-mcp` under stdio and register it with your MCP client:
 
 Every CLI command is exposed as a tool: `send` accepts the same unified model
 (`text`, `files`, `format`, `dates`, `reply`, `topic`, `at`), plus
-`poll`, `topics`, `watch` (snapshot), `upload`, `album`, `voice`,
-`schedule`, `scheduled`, `cancel`, `edit`, `draft`, `search`/`searchin`,
-`sync`, mirror access, admin tools, and `export`/`import`/`wipe`.
+`poll`, `topics`, `watch` (snapshot or unread survey), `upload`, `album`,
+`voice`, `schedule`, `scheduled`, `cancel`, `edit`, `draft`, `react`,
+`reactions`, `search`/`searchin`, `sync`, mirror access, admin tools, and
+`export`/`import`/`wipe`.
 
 ## Session lock note
 

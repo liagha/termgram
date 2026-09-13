@@ -128,6 +128,12 @@ pub struct Topic {
 }
 
 #[derive(Debug, Serialize)]
+pub struct Reaction {
+    pub emoji: String,
+    pub count: i32,
+}
+
+#[derive(Debug, Serialize)]
 pub struct Sent {
     pub ids: Vec<i32>,
 }

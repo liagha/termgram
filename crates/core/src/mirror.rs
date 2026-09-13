@@ -153,7 +153,7 @@ impl Mirror {
                 "SELECT m.date, m.out, m.sender, m.text, c.name, m.id
                  FROM messages m
                  JOIN chats c ON c.id = m.chat
-                 WHERE c.id = ?1 OR c.name = ?1 OR c.username = ?1
+                 WHERE c.id = ?1 OR LOWER(c.name) = LOWER(?1) OR LOWER(c.username) = LOWER(?1)
                  ORDER BY m.date DESC
                  LIMIT ?2",
                 libsql::params![chat, limit as i64],
@@ -180,7 +180,7 @@ impl Mirror {
                  FROM messages_fts f
                  JOIN messages m ON f.rowid = m.rowid
                  JOIN chats c ON c.id = m.chat
-                 WHERE messages_fts MATCH ?1 AND (c.id = ?2 OR c.name = ?2 OR c.username = ?2)
+                 WHERE messages_fts MATCH ?1 AND (c.id = ?2 OR LOWER(c.name) = LOWER(?2) OR LOWER(c.username) = LOWER(?2))
                  ORDER BY m.date DESC
                  LIMIT 20",
                 vec![Value::Text(q.to_string()), Value::Text(slot.to_string())],

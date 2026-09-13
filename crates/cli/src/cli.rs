@@ -77,6 +77,12 @@ pub enum Command {
         /// print the last messages of the chat and exit instead of following
         #[arg(long)]
         once: bool,
+        /// survey chats with unread messages instead of following
+        #[arg(long)]
+        unread: bool,
+        /// seconds between unread surveys
+        #[arg(long, default_value_t = 30)]
+        every: u64,
     },
     Sync {
         #[arg(default_value_t = 200)]
@@ -109,13 +115,17 @@ pub enum Command {
     Delete {
         /// who: @username, chat id, or contact name
         target: String,
+        /// message ids to delete
         ids: Vec<i32>,
     },
     Forward {
+        /// source chat
         #[arg(value_name = "FROM")]
         from: String,
+        /// destination chat
         #[arg(value_name = "TO")]
         to: String,
+        /// message ids to forward
         ids: Vec<i32>,
     },
     Pin {
@@ -128,19 +138,34 @@ pub enum Command {
     React {
         /// who: @username, chat id, or contact name
         target: String,
-        id: i32,
+        /// message id; omit to react to the last message in the chat
+        id: Option<i32>,
+        /// emoji to react with
         emoji: Option<String>,
+        /// remove your reaction instead of adding one
         #[arg(long)]
         remove: bool,
+        /// make the reaction animate big
+        #[arg(long)]
+        big: bool,
+    },
+    Reactions {
+        /// who: @username, chat id, or contact name
+        target: String,
+        /// message id to list reactions for
+        id: i32,
     },
     Contacts,
     Folders,
     FolderNew {
+        /// folder title
         title: String,
+        /// chats to include; repeat for more
         #[arg(long = "include", action = clap::ArgAction::Append)]
         include: Vec<String>,
     },
     FolderRm {
+        /// folder id from termgram folders
         id: i32,
     },
     Pinned {
@@ -156,21 +181,25 @@ pub enum Command {
     Kick {
         /// group: @username, chat id, or contact name
         target: String,
+        /// username, id, or contact name of the user
         user: String,
     },
     Ban {
         /// group: @username, chat id, or contact name
         target: String,
+        /// username, id, or contact name of the user
         user: String,
     },
     Unban {
         /// group: @username, chat id, or contact name
         target: String,
+        /// username, id, or contact name of the user
         user: String,
     },
     Promote {
         /// group: @username, chat id, or contact name
         target: String,
+        /// username, id, or contact name of the user
         user: String,
         #[arg(long)]
         rank: Option<String>,

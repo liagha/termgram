@@ -43,6 +43,8 @@ pub struct TopicsArgs {
 pub struct WatchArgs {
     pub target: Option<String>,
     pub limit: Option<i32>,
+    #[serde(default)]
+    pub unread: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -105,9 +107,17 @@ pub struct PinArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReactArgs {
     pub target: String,
-    pub id: i32,
+    pub id: Option<i32>,
     pub emoji: Option<String>,
     pub remove: bool,
+    #[serde(default)]
+    pub big: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ReactionArgs {
+    pub target: String,
+    pub id: i32,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -277,11 +287,19 @@ impl Server {
         self.run(self.client.topics(&args.target)).await
     }
 
-    #[tool(description = "Snapshot the last messages of a chat (or the latest dialogs when target is omitted); does not follow a live stream")]
+    #[tool(description = "Snapshot the last messages of a chat (or the latest dialogs when target is omitted, or only chats with unread messages when unread is set); does not follow a live stream")]
     async fn watch(&self, Parameters(args): Parameters<WatchArgs>) -> String {
         match args.target {
-            Some(t) => self.run(self.client.messages(&t, args.limit.unwrap_or(20).max(1) as usize)).await,
-            None => self.run(self.client.dialogs()).await,
+            Some(t) => self
+                .run(self.client.messages(&t, args.limit.unwrap_or(20).max(1) as usize))
+                .await,
+            None => {
+                if args.unread {
+                    self.run(self.client.unread()).await
+                } else {
+                    self.run(self.client.dialogs()).await
+                }
+            }
         }
     }
 
@@ -346,13 +364,18 @@ impl Server {
             .await
     }
 
-    #[tool(description = "React to a message with an emoji, or remove the reaction")]
+    #[tool(description = "React to a message with an emoji (omit id to use the last message in the chat), or remove the reaction")]
     async fn react(&self, Parameters(args): Parameters<ReactArgs>) -> String {
         self.run(
             self.client
-                .react(&args.target, args.id, args.emoji.as_deref(), args.remove),
+                .react(&args.target, args.id, args.emoji.as_deref(), args.remove, args.big),
         )
         .await
+    }
+
+    #[tool(description = "List the reactions on a message and how many times each was used")]
+    async fn reactions(&self, Parameters(args): Parameters<ReactionArgs>) -> String {
+        self.run(self.client.reactions(&args.target, args.id)).await
     }
 
     #[tool(description = "List contacts of the account")]
