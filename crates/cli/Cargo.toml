@@ -3,13 +3,15 @@ name = "termgram-cli"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "Telegram MTProto client for the terminal: messages, media, contacts, scheduled sends"
+repository = "https://github.com/liagha/termgram"
 
 [[bin]]
 name = "termgram"
 path = "src/main.rs"
 
 [dependencies]
-termgram = { path = "../core" }
+termgram = { path = "../core", version = "0.1.0" }
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"

@@ -3,9 +3,11 @@ name = "termgram-mcp"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "MCP server for Telegram: full tool set plus server-to-client push notifications on new messages"
+repository = "https://github.com/liagha/termgram"
 
 [dependencies]
-termgram = { path = "../core" }
+termgram = { path = "../core", version = "0.1.0" }
 rmcp = { version = "3.3", features = ["transport-io"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"

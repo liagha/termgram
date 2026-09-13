@@ -3,6 +3,8 @@ name = "termgram"
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
+description = "Personal-account Telegram MTProto client core: messages, media, contacts, push updates"
+repository = "https://github.com/liagha/termgram"
 
 [dependencies]
 grammers-client = { version = "0.10", features = ["fs", "markdown", "html"] }
