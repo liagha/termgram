@@ -2,9 +2,11 @@ use std::io::Write;
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
+use chrono::{Datelike, TimeZone};
 use grammers_client::client::UpdateStream;
 use grammers_client::media::Media;
 use grammers_client::message::{InputMessage, InputReactions};
+use grammers_client::parsers;
 use grammers_client::peer::User;
 use grammers_client::tl;
 use grammers_client::{Client as Raw, SignInError};
@@ -20,6 +22,68 @@ use crate::{
     Ack, Contact, Dialog, Done, Folder, Hit, Identity, Label, Line, Member, Path, Pinned, Sent,
     Summary,
 };
+
+fn date_entity(text: &str, format_date: &str) -> Result<tl::types::MessageEntityFormattedDate> {
+    let idx = text.find(format_date).with_context(|| {
+        format!("format_date '{format_date}' was not found in the message text.")
+    })?;
+    let tokens: Vec<&str> = format_date.split_whitespace().collect();
+    let parts: Vec<&str> = match tokens.first() {
+        Some(t) => t.split('/').collect(),
+        None => bail!("format_date must look like 13/09, 13/09/2026 or 13/09 17:00."),
+    };
+    if !(2..=3).contains(&parts.len()) || parts.iter().any(|p| !p.chars().all(|c| c.is_ascii_digit()))
+    {
+        bail!("format_date '{format_date}' must look like 13/09, 13/09/2026 or 13/09 17:00.");
+    }
+    let clock: Option<Vec<&str>> = match tokens.len() {
+        2 => {
+            let c: Vec<&str> = tokens[1].split(':').collect();
+            if c.len() != 2 || c.iter().any(|p| !p.chars().all(|c| c.is_ascii_digit())) {
+                bail!("format_date '{format_date}' must look like 13/09, 13/09/2026 or 13/09 17:00.");
+            }
+            Some(c)
+        }
+        1 => None,
+        _ => bail!("format_date '{format_date}' must look like 13/09, 13/09/2026 or 13/09 17:00."),
+    };
+    let day: u32 = parts[0]
+        .parse()
+        .with_context(|| format!("format_date '{format_date}' is not a valid date."))?;
+    let month: u32 = parts[1]
+        .parse()
+        .with_context(|| format!("format_date '{format_date}' is not a valid date."))?;
+    let year: i32 = if parts.len() == 3 {
+        parts[2].parse().with_context(|| {
+            format!("format_date '{format_date}' is not a valid date.")
+        })?
+    } else {
+        chrono::Local::now().year()
+    };
+    let (hour, minute): (u32, u32) = match &clock {
+        Some(c) => (c[0].parse()?, c[1].parse()?),
+        None => (0, 0),
+    };
+    let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)
+        .and_then(|d| d.and_hms_opt(hour, minute, 0))
+        .context(format!("format_date '{format_date}' is not a valid date."))?;
+    let date = chrono::Local
+        .from_local_datetime(&naive)
+        .earliest()
+        .context(format!("format_date '{format_date}' is not a valid date."))?
+        .timestamp() as i32;
+    Ok(tl::types::MessageEntityFormattedDate {
+        relative: false,
+        short_time: clock.is_some(),
+        long_time: false,
+        short_date: parts.len() == 2,
+        long_date: parts.len() == 3,
+        day_of_week: false,
+        offset: text[..idx].encode_utf16().count() as i32,
+        length: format_date.encode_utf16().count() as i32,
+        date,
+    })
+}
 
 pub struct Client {
     pub raw: Raw,
@@ -241,13 +305,20 @@ impl Client {
         text: &str,
         reply: Option<i32>,
         format: crate::SendFormat,
+        date: Option<&str>,
     ) -> Result<Sent> {
         let peer = self.resolve(target).await?;
-        let msg = match format {
-            crate::SendFormat::Markdown => InputMessage::new().markdown(text).reply_to(reply),
-            crate::SendFormat::Html => InputMessage::new().html(text).reply_to(reply),
-            crate::SendFormat::Plain => InputMessage::new().text(text).reply_to(reply),
+        let (t, mut entities) = match format {
+            crate::SendFormat::Markdown => parsers::parse_markdown_message(text),
+            crate::SendFormat::Html => parsers::parse_html_message(text),
+            crate::SendFormat::Plain => (text.to_string(), vec![]),
         };
+        if let Some(fd) = date {
+            entities.push(tl::enums::MessageEntity::FormattedDate(
+                date_entity(&t, fd)?,
+            ));
+        }
+        let msg = InputMessage::new().text(t).fmt_entities(entities).reply_to(reply);
         let sent = self.raw.send_message(peer, msg).await?;
         Ok(Sent { id: sent.id() })
     }

@@ -212,9 +212,15 @@ async fn main() -> Result<()> {
                 println!("[{}] {at} {}: {}", line.id, Out::who(&line), line.text);
             }
         }
-        Command::Send { target, text, reply, format } => {
+        Command::Send {
+            target,
+            text,
+            reply,
+            format,
+            date,
+        } => {
             let fmt = termgram::SendFormat::parse(format.as_deref())?;
-            let sent = client.send(&target, &text, reply, fmt).await?;
+            let sent = client.send(&target, &text, reply, fmt, date.as_deref()).await?;
             println!("sent {}", sent.id);
         }
         Command::Read { target } => {

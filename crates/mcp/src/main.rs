@@ -29,6 +29,7 @@ pub struct SendArgs {
     pub text: String,
     pub reply: Option<i32>,
     pub format: Option<String>,
+    pub date: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -255,8 +256,11 @@ impl Server {
             Ok(format) => format,
             Err(err) => return format!("{err}"),
         };
-        self.run(self.client.send(&args.target, &args.text, args.reply, fmt))
-            .await
+        self.run(
+            self.client
+                .send(&args.target, &args.text, args.reply, fmt, args.date.as_deref()),
+        )
+        .await
     }
 
     #[tool(description = "Mark a chat as read")]
