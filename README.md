@@ -1,5 +1,10 @@
 # termgram
 
+[![crates.io](https://img.shields.io/crates/v/termgram-cli)](https://crates.io/crates/termgram-cli)
+[![GitHub release](https://img.shields.io/github/v/release/liagha/termgram)](https://github.com/liagha/termgram/releases)
+[![ci](https://img.shields.io/github/actions/workflow/status/liagha/termgram/ci.yml)](https://github.com/liagha/termgram/actions/workflows/ci.yml)
+[![license](https://img.shields.io/github/license/liagha/termgram)](https://github.com/liagha/termgram/blob/main/LICENSE)
+
 Telegram in the terminal. A complete MTProto client, an MCP server, and a
 push stream, in one place.
 
@@ -72,8 +77,11 @@ cp target/release/termgram-mcp ~/.local/bin/
 cp target/release/termgram-notify ~/.local/bin/
 ```
 
-Or install each crate individually with `cargo install --path crates/cli`,
+Or install each crate from crates.io with `cargo install termgram-cli termgram-mcp
+termgram-notify`, or from source with `cargo install --path crates/cli`,
 `cargo install --path crates/mcp`, `cargo install --path crates/notify`.
+Prebuilt binaries are attached to every [GitHub
+release](https://github.com/liagha/termgram/releases).
 
 ## CLI
 
