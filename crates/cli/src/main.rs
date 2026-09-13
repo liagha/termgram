@@ -4,10 +4,43 @@ mod format;
 use anyhow::{bail, Context, Result};
 use chrono::{Local, NaiveDateTime, NaiveTime};
 use clap::Parser;
+use std::time::Instant;
 
 use cli::{Cli, Command, What};
 use format::Out;
+use std::time::Duration;
 use termgram::{Client, Mirror, Update};
+
+async fn with_feedback<T, F>(label: &str, json: bool, fut: F) -> Result<T>
+where
+    F: std::future::Future<Output = Result<T>>,
+{
+    if json {
+        return fut.await;
+    }
+    let start = Instant::now();
+    let mut fut = Box::pin(fut);
+    let mut timer = Box::pin(tokio::time::sleep(Duration::from_millis(300)));
+    let mut printed = false;
+    loop {
+        tokio::select! {
+            res = &mut fut => {
+                if printed {
+                    match &res {
+                        Ok(_) => eprintln!(" ok {:.1}s", start.elapsed().as_secs_f32()),
+                        Err(_) => eprintln!(" failed {:.1}s", start.elapsed().as_secs_f32()),
+                    }
+                }
+                return res;
+            }
+            _ = &mut timer, if !printed => {
+                eprint!("{label}...");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+                printed = true;
+            }
+        }
+    }
+}
 
 async fn watch(
     client: &mut Client,
@@ -211,11 +244,18 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = termgram::Config::load()?;
     let api_hash = cfg.api_hash.clone();
-    let mut client = if matches!(cli.op, Command::Login) {
-        Client::new_boot(&cfg, &cli.account).await?
-    } else {
-        Client::new(&cfg, &cli.account).await?
-    };
+    let mut client = with_feedback(
+        "connecting",
+        cli.json,
+        async {
+            if matches!(cli.op, Command::Login) {
+                Client::new_boot(&cfg, &cli.account).await
+            } else {
+                Client::new(&cfg, &cli.account).await
+            }
+        },
+    )
+    .await?;
     match cli.op {
         Command::Login => {
             let me = client.login(&api_hash).await?;
@@ -223,7 +263,7 @@ async fn main() -> Result<()> {
         }
         Command::Logout => println!("{}", client.logout().await?.text),
         Command::Me => {
-            let me = client.me().await?;
+            let me = with_feedback("fetching identity", cli.json, client.me()).await?;
             dump(cli.json, &me)?;
             if !cli.json {
                 print!("{}", me.name);
@@ -234,7 +274,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Dialogs => {
-            let rows = client.dialogs().await?;
+            let rows = with_feedback("fetching dialogs", cli.json, client.dialogs()).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -265,7 +305,12 @@ async fn main() -> Result<()> {
             }
         }
         Command::Messages { target, limit } => {
-            let rows = client.messages(&target, limit).await?;
+            let rows = with_feedback(
+                "fetching messages",
+                cli.json,
+                client.messages(&target, limit),
+            )
+            .await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -298,7 +343,26 @@ async fn main() -> Result<()> {
                 topic,
                 at: at.as_deref().map(parse_at).transpose()?,
             };
-            let sent = client.send(&args).await?;
+            let show = !cli.json;
+            if show {
+                eprint!("sending to {}...", args.target);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            let tick = Instant::now();
+            let sent = match client.send(&args).await {
+                Ok(v) => {
+                    if show {
+                        eprintln!(" ok {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    v
+                }
+                Err(err) => {
+                    if show {
+                        eprintln!(" failed {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    return Err(err);
+                }
+            };
             if sent.ids.len() == 1 {
                 println!("sent {}", sent.ids[0]);
             } else {
@@ -330,7 +394,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Topics { target } => {
-            let rows = client.topics(&target).await?;
+            let rows = with_feedback("fetching topics", cli.json, client.topics(&target)).await?;
             dump(cli.json, &rows)?;
             if !cli.json {
                 for row in rows {
@@ -339,14 +403,34 @@ async fn main() -> Result<()> {
             }
         }
         Command::Sync { limit } => {
-            let s = client.sync(limit).await?;
+            let show = !cli.json;
+            if show {
+                eprint!("syncing...");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            let tick = Instant::now();
+            let s = match client.sync(limit).await {
+                Ok(v) => {
+                    if show {
+                        eprintln!(" ok {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    v
+                }
+                Err(err) => {
+                    if show {
+                        eprintln!(" failed {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    return Err(err);
+                }
+            };
             dump(cli.json, &s)?;
             if !cli.json {
                 println!("synced {} chats, {} lines", s.chats, s.lines);
             }
         }
         Command::Search { query, chat } => {
-            let rows = client.search(&query, chat.as_deref()).await?;
+            let rows = with_feedback("searching", cli.json, client.search(&query, chat.as_deref()))
+                .await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -362,7 +446,27 @@ async fn main() -> Result<()> {
             }
         }
         Command::Download { target, id } => {
-            println!("saved {}", client.download(&target, id).await?.path);
+            let show = !cli.json;
+            if show {
+                eprint!("downloading...");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            let tick = Instant::now();
+            let done = match client.download(&target, id).await {
+                Ok(v) => {
+                    if show {
+                        eprintln!(" ok {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    v
+                }
+                Err(err) => {
+                    if show {
+                        eprintln!(" failed {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    return Err(err);
+                }
+            };
+            println!("saved {}", done.path);
         }
         Command::Edit {
             target,
@@ -419,7 +523,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Contacts => {
-            let rows = client.contacts().await?;
+            let rows = with_feedback("fetching contacts", cli.json, client.contacts()).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -661,7 +765,26 @@ async fn main() -> Result<()> {
             }
         }
         Command::Grab { target } => {
-            let done = client.grab(&target).await?;
+            let show = !cli.json;
+            if show {
+                eprint!("grabbing media from {}...", target);
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            let tick = Instant::now();
+            let done = match client.grab(&target).await {
+                Ok(v) => {
+                    if show {
+                        eprintln!(" ok {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    v
+                }
+                Err(err) => {
+                    if show {
+                        eprintln!(" failed {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    return Err(err);
+                }
+            };
             println!("grabbed {} media files", done.n);
         }
         Command::Export { path } => {
