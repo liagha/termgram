@@ -428,6 +428,53 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Command::AddContact { phone, first, last } => {
+            println!("{}", client.add_contact(&phone, &first, &last).await?.text);
+        }
+        Command::DeleteContact { target } => {
+            println!("{}", client.delete_contact(&target).await?.text);
+        }
+        Command::ExportContacts => {
+            let rows = client.export_contacts().await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for contact in rows {
+                match contact.handle {
+                    Some(handle) => println!("{} / @{handle}", contact.name),
+                    None => println!("{}", contact.name),
+                }
+            }
+        }
+        Command::ImportContacts { contact } => {
+            let mut contacts = Vec::new();
+            for pair in &contact {
+                let parts: Vec<&str> = pair.split(',').collect();
+                if parts.len() != 3 {
+                    bail!("contact {pair:?} must be \"phone,first,last\"");
+                }
+                contacts.push(termgram::PhoneContact {
+                    phone: parts[0].to_string(),
+                    first: parts[1].to_string(),
+                    last: parts[2].to_string(),
+                });
+            }
+            println!("imported {} contact(s)", client.import_contacts(&contacts).await?.n);
+        }
+        Command::BlockList => {
+            let rows = client.block_list().await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for member in rows {
+                println!("{}", member.name);
+            }
+        }
+        Command::DelPhoto { target } => {
+            println!("{}", client.del_photo(&target).await?.text);
+        }
         Command::Folders => {
             let rows = client.folders().await?;
             dump(cli.json, &rows)?;

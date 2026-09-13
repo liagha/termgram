@@ -2,6 +2,7 @@ pub mod accounts;
 pub mod client;
 pub mod config;
 pub mod draft;
+pub mod extra;
 pub mod media;
 pub mod mirror;
 pub mod poll;
@@ -104,6 +105,13 @@ pub struct Contact {
     pub id: i64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PhoneContact {
+    pub phone: String,
+    pub first: String,
+    pub last: String,
+}
+
 #[derive(Debug, Serialize)]
 pub struct Folder {
     pub id: i32,
@@ -131,6 +139,15 @@ pub struct Topic {
 pub struct Reaction {
     pub emoji: String,
     pub count: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Chat {
+    pub id: i64,
+    pub name: String,
+    pub title: Option<String>,
+    pub about: String,
+    pub unread: i32,
 }
 
 #[derive(Debug, Serialize)]

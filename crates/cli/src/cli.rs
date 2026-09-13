@@ -156,6 +156,27 @@ pub enum Command {
         id: i32,
     },
     Contacts,
+    AddContact {
+        /// international phone number, e.g. +989121234567
+        phone: String,
+        first: String,
+        last: String,
+    },
+    DeleteContact {
+        /// who: @username, chat id, or contact name
+        target: String,
+    },
+    ExportContacts,
+    ImportContacts {
+        /// contact as "phone,first,last"; repeat for more
+        #[arg(long = "contact", action = clap::ArgAction::Append, value_name = "PHONE,FIRST,LAST")]
+        contact: Vec<String>,
+    },
+    BlockList,
+    DelPhoto {
+        /// who: @username, chat id, or contact name
+        target: String,
+    },
     Folders,
     FolderNew {
         /// folder title

@@ -174,6 +174,18 @@ pub struct PhotoArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PhoneContactArgs {
+    pub phone: String,
+    pub first: String,
+    pub last: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ImportArgs2 {
+    pub contacts: Vec<termgram::PhoneContact>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchallArgs {
     pub query: String,
     pub limit: Option<i32>,
@@ -381,6 +393,37 @@ impl Server {
     #[tool(description = "List contacts of the account")]
     async fn contacts(&self, _: Parameters<Empty>) -> String {
         self.run(self.client.contacts()).await
+    }
+
+    #[tool(description = "Add a contact by phone number")]
+    async fn add_contact(&self, Parameters(args): Parameters<PhoneContactArgs>) -> String {
+        self.run(self.client.add_contact(&args.phone, &args.first, &args.last))
+            .await
+    }
+
+    #[tool(description = "Delete a contact")]
+    async fn delete_contact(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.delete_contact(&args.target)).await
+    }
+
+    #[tool(description = "Export all contacts of the account")]
+    async fn export_contacts(&self, _: Parameters<Empty>) -> String {
+        self.run(self.client.export_contacts()).await
+    }
+
+    #[tool(description = "Import contacts by phone number (each with first and last name)")]
+    async fn import_contacts(&self, Parameters(args): Parameters<ImportArgs2>) -> String {
+        self.run(self.client.import_contacts(&args.contacts)).await
+    }
+
+    #[tool(description = "List blocked users")]
+    async fn block_list(&self, _: Parameters<Empty>) -> String {
+        self.run(self.client.block_list()).await
+    }
+
+    #[tool(description = "Remove the profile photo of a chat")]
+    async fn del_photo(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.del_photo(&args.target)).await
     }
 
     #[tool(description = "List chat folders")]
