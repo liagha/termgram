@@ -24,27 +24,6 @@ pub struct MessageArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct SendArgs {
-    pub target: String,
-    pub text: String,
-    pub reply: Option<i32>,
-    pub format: Option<String>,
-    pub dates: Vec<String>,
-}
-
-impl From<SendArgs> for termgram::SendArgs {
-    fn from(args: SendArgs) -> Self {
-        termgram::SendArgs {
-            target: args.target,
-            text: args.text,
-            reply: args.reply,
-            format: args.format,
-            dates: args.dates,
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SignArgs {
     pub target: String,
     pub id: i32,
@@ -65,7 +44,7 @@ pub struct SearchArgs {
 pub struct UploadArgs {
     pub target: String,
     pub path: String,
-    pub caption: Option<String>,
+    pub caption: Option<termgram::Text>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -78,7 +57,7 @@ pub struct DownloadArgs {
 pub struct EditArgs {
     pub target: String,
     pub id: i32,
-    pub text: String,
+    pub text: termgram::Text,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -136,14 +115,14 @@ pub struct PromoteArgs {
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ScheduleArgs {
     pub target: String,
-    pub text: String,
+    pub text: termgram::Text,
     pub at: i64,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DraftArgs {
     pub target: String,
-    pub text: Option<String>,
+    pub text: Option<termgram::Text>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -179,7 +158,7 @@ pub struct SearchinArgs {
 pub struct AlbumArgs {
     pub target: String,
     pub paths: Vec<String>,
-    pub caption: Option<String>,
+    pub caption: Option<termgram::Text>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -262,9 +241,9 @@ impl Server {
         self.run(self.client.messages(&args.target, limit)).await
     }
 
-    #[tool(description = "Send a text message to a chat (format: plain, md, or html; dates: exact date text to render as tappable chips)")]
-    async fn send(&self, Parameters(args): Parameters<SendArgs>) -> String {
-        self.run(self.client.send(&args.into())).await
+    #[tool(description = "Send text and/or files to a chat (one file sends a photo, document, or voice note by type; several send an album). text.format: plain, markdown, or html. text.dates: exact date text in the message to render as tappable chips. at: future unix timestamp to schedule")]
+    async fn send(&self, Parameters(args): Parameters<termgram::Send>) -> String {
+        self.run(self.client.send(&args)).await
     }
 
     #[tool(description = "Mark a chat as read")]
@@ -284,13 +263,15 @@ impl Server {
             .await
     }
 
-    #[tool(description = "Upload a file to a chat")]
+    #[tool(description = "Upload a file to a chat (sends a photo, document, or voice note by type; caption is rich text)")]
     async fn upload(&self, Parameters(args): Parameters<UploadArgs>) -> String {
-        self.run(
-            self.client
-                .upload(&args.target, &args.path, args.caption.as_deref()),
-        )
-        .await
+        let send = termgram::Send {
+            target: args.target,
+            text: args.caption,
+            files: vec![args.path],
+            ..Default::default()
+        };
+        self.run(self.client.send(&send)).await
     }
 
     #[tool(description = "Download media from a chat message to the local media dir")]
@@ -298,7 +279,7 @@ impl Server {
         self.run(self.client.download(&args.target, args.id)).await
     }
 
-    #[tool(description = "Edit a message you sent")]
+    #[tool(description = "Edit a message you sent (format: plain, md, or html; dates: exact date text in the message to render as tappable chips)")]
     async fn edit(&self, Parameters(args): Parameters<EditArgs>) -> String {
         self.run(self.client.edit(&args.target, args.id, &args.text))
             .await
@@ -396,10 +377,15 @@ impl Server {
         self.run(self.client.status(&args.target)).await
     }
 
-    #[tool(description = "Schedule a message for a future unix timestamp")]
+    #[tool(description = "Schedule a rich text message for a future unix timestamp")]
     async fn schedule(&self, Parameters(args): Parameters<ScheduleArgs>) -> String {
-        self.run(self.client.schedule(&args.target, &args.text, args.at as u64))
-            .await
+        let send = termgram::Send {
+            target: args.target,
+            text: Some(args.text),
+            at: Some(args.at as u64),
+            ..Default::default()
+        };
+        self.run(self.client.send(&send)).await
     }
 
     #[tool(description = "List scheduled messages of a chat")]
@@ -412,10 +398,9 @@ impl Server {
         self.run(self.client.cancel(&args.target, args.id)).await
     }
 
-    #[tool(description = "Save or clear (empty text) a draft in a chat")]
+    #[tool(description = "Save or clear (empty text) a draft in a chat — the draft text is rich (format, dates)")]
     async fn draft(&self, Parameters(args): Parameters<DraftArgs>) -> String {
-        self.run(self.client.draft(&args.target, args.text.as_deref()))
-            .await
+        self.run(self.client.draft(&args.target, args.text.as_ref())).await
     }
 
     #[tool(description = "List all saved drafts")]
@@ -466,24 +451,36 @@ impl Server {
             .await
     }
 
-    #[tool(description = "Send a photo to a chat")]
+    #[tool(description = "Send a photo to a chat (caption is rich text)")]
     async fn photo(&self, Parameters(args): Parameters<UploadArgs>) -> String {
-        self.run(
-            self.client
-                .photo(&args.target, &args.path, args.caption.as_deref()),
-        )
-        .await
+        let send = termgram::Send {
+            target: args.target,
+            text: args.caption,
+            files: vec![args.path],
+            ..Default::default()
+        };
+        self.run(self.client.send(&send)).await
     }
 
-    #[tool(description = "Send multiple files as one media album")]
+    #[tool(description = "Send multiple files as one media album (caption is plain text)")]
     async fn album(&self, Parameters(args): Parameters<AlbumArgs>) -> String {
-        self.run(self.client.album(&args.target, &args.paths, args.caption.as_deref()))
-            .await
+        let send = termgram::Send {
+            target: args.target,
+            text: args.caption,
+            files: args.paths,
+            ..Default::default()
+        };
+        self.run(self.client.send(&send)).await
     }
 
     #[tool(description = "Send an audio file as a voice message")]
     async fn voice(&self, Parameters(args): Parameters<VoiceArgs>) -> String {
-        self.run(self.client.voice(&args.target, &args.path)).await
+        let send = termgram::Send {
+            target: args.target,
+            files: vec![args.path],
+            ..Default::default()
+        };
+        self.run(self.client.send(&send)).await
     }
 
     #[tool(description = "Read cached messages of a chat from the local mirror")]

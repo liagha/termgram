@@ -28,8 +28,11 @@ pub enum Command {
     Send {
         /// who: @username, chat id, or contact name
         target: String,
-        /// plain text (keeps date strings tappable as chips in Telegram) or md/html formatting
-        text: String,
+        /// text body, or media caption when --file is used
+        text: Option<String>,
+        /// file path(s): one sends a photo, document, or voice note by type; several send an album
+        #[arg(long = "file", action = clap::ArgAction::Append)]
+        files: Vec<String>,
         #[arg(long)]
         reply: Option<i32>,
         /// plain, md, or html
@@ -38,6 +41,9 @@ pub enum Command {
         /// exact date text in message to render as a tappable chip; repeat for more
         #[arg(long = "date", action = clap::ArgAction::Append)]
         dates: Vec<String>,
+        /// send now, HH:MM, or YYYY-MM-DD HH:MM
+        #[arg(long)]
+        at: Option<String>,
     },
     Read {
         /// who: @username, chat id, or contact name
@@ -58,13 +64,6 @@ pub enum Command {
         #[arg(short, long)]
         chat: Option<String>,
     },
-    Upload {
-        /// who: @username, chat id, or contact name
-        target: String,
-        path: String,
-        #[arg(short)]
-        caption: Option<String>,
-    },
     Download {
         /// who: @username, chat id, or contact name
         target: String,
@@ -76,6 +75,12 @@ pub enum Command {
         target: String,
         id: i32,
         text: String,
+        /// plain, md, or html
+        #[arg(long)]
+        format: Option<String>,
+        /// exact date text in text to render as a tappable chip; repeat for more
+        #[arg(long = "date", action = clap::ArgAction::Append)]
+        dates: Vec<String>,
     },
     Delete {
         /// who: @username, chat id, or contact name
@@ -154,12 +159,6 @@ pub enum Command {
         /// who: @username, chat id, or contact name
         target: String,
     },
-    Schedule {
-        /// who: @username, chat id, or contact name
-        target: String,
-        text: String,
-        at: String,
-    },
     Scheduled {
         /// who: @username, chat id, or contact name
         target: String,
@@ -173,6 +172,12 @@ pub enum Command {
         /// who: @username, chat id, or contact name
         target: String,
         text: Option<String>,
+        /// plain, md, or html
+        #[arg(long)]
+        format: Option<String>,
+        /// exact date text in text to render as a tappable chip; repeat for more
+        #[arg(long = "date", action = clap::ArgAction::Append)]
+        dates: Vec<String>,
     },
     Drafts,
     Profile {
@@ -202,25 +207,6 @@ pub enum Command {
         query: String,
         #[arg(default_value_t = 20)]
         limit: usize,
-    },
-    Photo {
-        /// who: @username, chat id, or contact name
-        target: String,
-        path: String,
-        #[arg(short)]
-        caption: Option<String>,
-    },
-    Album {
-        /// who: @username, chat id, or contact name
-        target: String,
-        paths: Vec<String>,
-        #[arg(short)]
-        caption: Option<String>,
-    },
-    Voice {
-        /// who: @username, chat id, or contact name
-        target: String,
-        path: String,
     },
     Cached {
         /// who: @username, chat id, or contact name

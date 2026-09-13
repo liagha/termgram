@@ -2,38 +2,27 @@ use grammers_client::tl;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
 
 use anyhow::Result;
-use grammers_client::message::InputMessage;
 
-use crate::{Ack, Planned, Sent};
+use crate::{Ack, Planned};
 
 #[derive(Serialize, Deserialize, Default)]
-struct Queue(HashMap<i64, Vec<i32>>);
+pub(crate) struct Queue(pub(crate) HashMap<i64, Vec<i32>>);
 
 impl crate::Client {
-    pub async fn schedule(&self, target: &str, text: &str, at: u64) -> Result<Sent> {
-        let peer = self.resolve(target).await?;
-        let when = SystemTime::UNIX_EPOCH + Duration::from_secs(at);
-        let msg = InputMessage::new().text(text).schedule_date(Some(when));
-        let sent = self.raw.send_message(peer.clone(), msg).await?;
-        let id = sent.id();
-        if let Some(peer) = peer.id.bot_api_dialog_id() {
-            let mut queue = self.read_queue();
-            queue.0.entry(peer).or_default().push(id);
-            let _ = self.write_queue(&queue);
-        }
-        Ok(Sent { id })
-    }
-
     pub async fn scheduled(&self, target: &str) -> Result<Vec<Planned>> {
         let peer = self.resolve(target).await?;
         let input = peer.clone().into();
         let mut rows = vec![];
         let mut keep = vec![];
-        if let Some(peer) = peer.id.bot_api_dialog_id() {
-            for id in self.read_queue().0.remove(&peer).unwrap_or_default() {
+        if let Some(key) = self.dialog_key(&peer).await {
+            let mut queue = self.read_queue();
+            let ids = queue.0.remove(&key).unwrap_or_default();
+            if !ids.is_empty() {
+                let _ = self.write_queue(&queue);
+            }
+            for id in ids {
                 self.collect(&input, id, &mut rows, &mut keep).await;
             }
             let extra = self.collect_all(&input).await;
@@ -44,7 +33,7 @@ impl crate::Client {
             }
             if !keep.is_empty() {
                 let mut queue = self.read_queue();
-                queue.0.entry(peer).or_default().extend(keep);
+                queue.0.entry(key).or_default().extend(keep);
                 let _ = self.write_queue(&queue);
             }
         }
@@ -60,9 +49,9 @@ impl crate::Client {
                 id: vec![id],
             })
             .await?;
-        if let Some(peer) = peer.id.bot_api_dialog_id() {
+        if let Some(key) = self.dialog_key(&peer).await {
             let mut queue = self.read_queue();
-            if let Some(ids) = queue.0.get_mut(&peer) {
+            if let Some(ids) = queue.0.get_mut(&key) {
                 ids.retain(|x| *x != id);
             }
             let _ = self.write_queue(&queue);
@@ -121,7 +110,7 @@ impl crate::Client {
         rows
     }
 
-    fn queue(&self) -> PathBuf {
+    pub(crate) fn queue(&self) -> PathBuf {
         if self.account == "default" {
             crate::config::Config::dir().join("scheduled.json")
         } else {
@@ -129,14 +118,14 @@ impl crate::Client {
         }
     }
 
-    fn read_queue(&self) -> Queue {
+    pub(crate) fn read_queue(&self) -> Queue {
         std::fs::read_to_string(self.queue())
             .ok()
             .and_then(|raw| serde_json::from_str(&raw).ok())
             .unwrap_or_default()
     }
 
-    fn write_queue(&self, queue: &Queue) -> Option<()> {
+    pub(crate) fn write_queue(&self, queue: &Queue) -> Option<()> {
         std::fs::write(self.queue(), serde_json::to_string_pretty(queue).ok()?).ok()
     }
 }

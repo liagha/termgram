@@ -2569,6 +2569,7 @@ dependencies = [
  "grammers-session",
  "libsql",
  "rpassword",
+ "schemars",
  "serde",
  "serde_json",
  "tokio",

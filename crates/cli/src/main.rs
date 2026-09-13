@@ -215,20 +215,30 @@ async fn main() -> Result<()> {
         Command::Send {
             target,
             text,
+            files,
             reply,
             format,
             dates,
+            at,
         } => {
-            let sent = client
-                .send(&termgram::SendArgs {
-                    target,
-                    text,
-                    reply,
+            let format = termgram::Format::parse(format.as_deref())?;
+            let args = termgram::Send {
+                target,
+                text: text.map(|t| termgram::Text {
+                    text: t,
                     format,
                     dates,
-                })
-                .await?;
-            println!("sent {}", sent.id);
+                }),
+                files,
+                reply,
+                at: at.as_deref().map(parse_at).transpose()?,
+            };
+            let sent = client.send(&args).await?;
+            if sent.ids.len() == 1 {
+                println!("sent {}", sent.ids[0]);
+            } else {
+                println!("sent {} messages", sent.ids.len());
+            }
         }
         Command::Read { target } => {
             println!("{}", client.mark_as_read(&target).await?.text);
@@ -257,18 +267,21 @@ async fn main() -> Result<()> {
                 );
             }
         }
-        Command::Upload {
-            target,
-            path,
-            caption,
-        } => {
-            let sent = client.upload(&target, &path, caption.as_deref()).await?;
-            println!("sent {}", sent.id);
-        }
         Command::Download { target, id } => {
             println!("saved {}", client.download(&target, id).await?.path);
         }
-        Command::Edit { target, id, text } => {
+        Command::Edit {
+            target,
+            id,
+            text,
+            format,
+            dates,
+        } => {
+            let text = termgram::Text {
+                text,
+                format: termgram::Format::parse(format.as_deref())?,
+                dates,
+            };
             println!("{}", client.edit(&target, id, &text).await?.text);
         }
         Command::Delete { target, ids } => {
@@ -372,10 +385,6 @@ async fn main() -> Result<()> {
                 println!("{}: {}", status.who, status.state);
             }
         }
-        Command::Schedule { target, text, at } => {
-            let sent = client.schedule(&target, &text, parse_at(&at)?).await?;
-            println!("scheduled {}", sent.id);
-        }
         Command::Scheduled { target } => {
             let rows = client.scheduled(&target).await?;
             dump(cli.json, &rows)?;
@@ -389,11 +398,19 @@ async fn main() -> Result<()> {
         Command::Cancel { target, id } => {
             println!("{}", client.cancel(&target, id).await?.text);
         }
-        Command::Draft { target, text } => {
-            println!(
-                "{}",
-                client.draft(&target, text.as_deref()).await?.text
-            );
+        Command::Draft {
+            target,
+            text,
+            format,
+            dates,
+        } => {
+            let format = termgram::Format::parse(format.as_deref())?;
+            let body = text.map(|t| termgram::Text {
+                text: t,
+                format,
+                dates,
+            });
+            println!("{}", client.draft(&target, body.as_ref()).await?.text);
         }
         Command::Drafts => {
             let rows = client.drafts().await?;
@@ -471,26 +488,6 @@ async fn main() -> Result<()> {
                     line.text
                 );
             }
-        }
-        Command::Photo {
-            target,
-            path,
-            caption,
-        } => {
-            let sent = client.photo(&target, &path, caption.as_deref()).await?;
-            println!("sent {}", sent.id);
-        }
-        Command::Album {
-            target,
-            paths,
-            caption,
-        } => {
-            let done = client.album(&target, &paths, caption.as_deref()).await?;
-            println!("sent album with {} items", done.n);
-        }
-        Command::Voice { target, path } => {
-            let sent = client.voice(&target, &path).await?;
-            println!("sent {}", sent.id);
         }
         Command::Cached { target, limit } => {
             let mirror = Mirror::open(&client.mirror()).await?;

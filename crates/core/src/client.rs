@@ -2,11 +2,9 @@ use std::io::Write;
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
-use chrono::{Datelike, TimeZone};
 use grammers_client::client::UpdateStream;
 use grammers_client::media::Media;
-use grammers_client::message::{InputMessage, InputReactions};
-use grammers_client::parsers;
+use grammers_client::message::InputReactions;
 use grammers_client::peer::User;
 use grammers_client::tl;
 use grammers_client::{Client as Raw, SignInError};
@@ -19,71 +17,8 @@ use tokio::sync::mpsc;
 use crate::config::Config;
 use crate::mirror::Mirror;
 use crate::{
-    Ack, Contact, Dialog, Done, Folder, Hit, Identity, Label, Line, Member, Path, Pinned, Sent,
-    Summary,
+    Ack, Contact, Dialog, Done, Folder, Hit, Identity, Label, Line, Member, Path, Pinned, Summary,
 };
-
-fn date_entity(text: &str, format_date: &str) -> Result<tl::types::MessageEntityFormattedDate> {
-    let idx = text.find(format_date).with_context(|| {
-        format!("format_date '{format_date}' was not found in the message text.")
-    })?;
-    let tokens: Vec<&str> = format_date.split_whitespace().collect();
-    let parts: Vec<&str> = match tokens.first() {
-        Some(t) => t.split('/').collect(),
-        None => bail!("format_date must look like 13/09, 13/09/2026 or 13/09 17:00."),
-    };
-    if !(2..=3).contains(&parts.len()) || parts.iter().any(|p| !p.chars().all(|c| c.is_ascii_digit()))
-    {
-        bail!("format_date '{format_date}' must look like 13/09, 13/09/2026 or 13/09 17:00.");
-    }
-    let clock: Option<Vec<&str>> = match tokens.len() {
-        2 => {
-            let c: Vec<&str> = tokens[1].split(':').collect();
-            if c.len() != 2 || c.iter().any(|p| !p.chars().all(|c| c.is_ascii_digit())) {
-                bail!("format_date '{format_date}' must look like 13/09, 13/09/2026 or 13/09 17:00.");
-            }
-            Some(c)
-        }
-        1 => None,
-        _ => bail!("format_date '{format_date}' must look like 13/09, 13/09/2026 or 13/09 17:00."),
-    };
-    let day: u32 = parts[0]
-        .parse()
-        .with_context(|| format!("format_date '{format_date}' is not a valid date."))?;
-    let month: u32 = parts[1]
-        .parse()
-        .with_context(|| format!("format_date '{format_date}' is not a valid date."))?;
-    let year: i32 = if parts.len() == 3 {
-        parts[2].parse().with_context(|| {
-            format!("format_date '{format_date}' is not a valid date.")
-        })?
-    } else {
-        chrono::Local::now().year()
-    };
-    let (hour, minute): (u32, u32) = match &clock {
-        Some(c) => (c[0].parse()?, c[1].parse()?),
-        None => (0, 0),
-    };
-    let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)
-        .and_then(|d| d.and_hms_opt(hour, minute, 0))
-        .context(format!("format_date '{format_date}' is not a valid date."))?;
-    let date = chrono::Local
-        .from_local_datetime(&naive)
-        .earliest()
-        .context(format!("format_date '{format_date}' is not a valid date."))?
-        .timestamp() as i32;
-    Ok(tl::types::MessageEntityFormattedDate {
-        relative: false,
-        short_time: clock.is_some(),
-        long_time: false,
-        short_date: parts.len() == 2,
-        long_date: parts.len() == 3,
-        day_of_week: false,
-        offset: text[..idx].encode_utf16().count() as i32,
-        length: format_date.encode_utf16().count() as i32,
-        date,
-    })
-}
 
 pub struct Client {
     pub raw: Raw,
@@ -299,50 +234,12 @@ impl Client {
         Ok(rows)
     }
 
-    pub async fn send(&self, args: &crate::SendArgs) -> Result<Sent> {
-        let peer = self.resolve(&args.target).await?;
-        let format = crate::SendFormat::parse(args.format.as_deref())?;
-        let (t, mut entities) = match format {
-            crate::SendFormat::Markdown => parsers::parse_markdown_message(&args.text),
-            crate::SendFormat::Html => parsers::parse_html_message(&args.text),
-            crate::SendFormat::Plain => (args.text.clone(), vec![]),
-        };
-        for date in &args.dates {
-            entities.push(tl::enums::MessageEntity::FormattedDate(date_entity(
-                &t,
-                date,
-            )?));
-        }
-        let msg = InputMessage::new()
-            .text(t)
-            .fmt_entities(entities)
-            .reply_to(args.reply);
-        let sent = self.raw.send_message(peer, msg).await?;
-        Ok(Sent { id: sent.id() })
-    }
-
     pub async fn mark_as_read(&self, target: &str) -> Result<Ack> {
         let peer = self.resolve(target).await?;
         self.raw.mark_as_read(peer).await?;
         Ok(Ack {
             text: "marked as read".into(),
         })
-    }
-
-    pub async fn upload(
-        &self,
-        target: &str,
-        path: &str,
-        caption: Option<&str>,
-    ) -> Result<Sent> {
-        let peer = self.resolve(target).await?;
-        let file = self.raw.upload_file(path).await?;
-        let mut msg = InputMessage::new().document(file);
-        if let Some(caption) = caption {
-            msg = msg.text(caption);
-        }
-        let sent = self.raw.send_message(peer, msg).await?;
-        Ok(Sent { id: sent.id() })
     }
 
     pub async fn download(&self, target: &str, wanted: Option<i32>) -> Result<Path> {
@@ -379,16 +276,6 @@ impl Client {
         self.raw.download_media(media, &path).await?;
         Ok(Path {
             path: path.display().to_string(),
-        })
-    }
-
-    pub async fn edit(&self, target: &str, id: i32, text: &str) -> Result<Ack> {
-        let peer = self.resolve(target).await?;
-        self.raw
-            .edit_message(peer, id, InputMessage::new().text(text))
-            .await?;
-        Ok(Ack {
-            text: format!("edited {id}"),
         })
     }
 

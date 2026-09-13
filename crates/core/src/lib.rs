@@ -8,6 +8,7 @@ pub mod presence;
 pub mod profile;
 pub mod schedule;
 pub mod search;
+pub mod send;
 
 pub use client::Client;
 pub use config::Config;
@@ -15,7 +16,8 @@ pub use grammers_client::update::Update;
 pub use mirror::Mirror;
 
 use grammers_client::media::Media;
-use serde::Serialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 pub struct Label;
 
@@ -119,34 +121,54 @@ pub struct Member {
 
 #[derive(Debug, Serialize)]
 pub struct Sent {
-    pub id: i32,
+    pub ids: Vec<i32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum SendFormat {
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum Format {
     Plain,
     Markdown,
     Html,
 }
 
-impl SendFormat {
+impl Format {
     pub fn parse(s: Option<&str>) -> anyhow::Result<Self> {
         match s.unwrap_or("plain").to_ascii_lowercase().as_str() {
-            "plain" => Ok(SendFormat::Plain),
-            "md" | "markdown" => Ok(SendFormat::Markdown),
-            "html" => Ok(SendFormat::Html),
+            "plain" => Ok(Format::Plain),
+            "md" | "markdown" => Ok(Format::Markdown),
+            "html" => Ok(Format::Html),
             other => anyhow::bail!("format must be plain, md, or html, got {other}"),
         }
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SendArgs {
-    pub target: String,
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct Text {
     pub text: String,
-    pub reply: Option<i32>,
-    pub format: Option<String>,
+    pub format: Format,
+    #[serde(default)]
     pub dates: Vec<String>,
+}
+
+impl Text {
+    pub fn plain(text: impl Into<String>) -> Self {
+        Text {
+            text: text.into(),
+            format: Format::Plain,
+            dates: vec![],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+pub struct Send {
+    pub target: String,
+    pub text: Option<Text>,
+    #[serde(default)]
+    pub files: Vec<String>,
+    pub reply: Option<i32>,
+    pub at: Option<u64>,
 }
 
 #[derive(Debug, Serialize)]
