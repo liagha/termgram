@@ -2,17 +2,16 @@ use std::io::Write;
 use std::sync::Arc;
 
 use anyhow::{bail, Context, Result};
-use grammers_client::client::UpdateStream;
 use grammers_client::media::Media;
 use grammers_client::message::InputReactions;
 use grammers_client::peer::User;
 use grammers_client::tl;
+use grammers_client::update::Update;
 use grammers_client::{Client as Raw, SignInError};
 use grammers_mtsender::SenderPool;
 use grammers_session::storages::SqliteSession;
 use grammers_session::types::{PeerId, PeerRef};
-use grammers_session::updates::UpdatesLike;
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 
 use crate::config::Config;
 use crate::mirror::Mirror;
@@ -54,7 +53,7 @@ fn folder_filter(
 pub struct Client {
     pub raw: Raw,
     pub(crate) account: String,
-    updates: Option<mpsc::UnboundedReceiver<UpdatesLike>>,
+    signals: broadcast::Receiver<Update>,
 }
 
 impl Client {
@@ -82,19 +81,27 @@ impl Client {
         let updates = pool.updates;
         tokio::spawn(pool.runner.run());
         let raw = Raw::new(pool.handle);
+        let (tx, signals) = broadcast::channel::<Update>(1024);
+        let streamer = raw.clone();
+        tokio::spawn(async move {
+            let Ok(mut stream) = streamer.stream_updates(updates, Default::default()).await else {
+                return;
+            };
+            while let Ok(update) = stream.next().await {
+                if tx.send(update).is_err() {
+                    return;
+                }
+            }
+        });
         Ok(Self {
             raw,
             account: account.to_string(),
-            updates: Some(updates),
+            signals,
         })
     }
 
-    pub async fn messages_stream(&mut self) -> Result<UpdateStream> {
-        let updates = self.updates.take().context("already streaming")?;
-        self.raw
-            .stream_updates(updates, Default::default())
-            .await
-            .map_err(|err| anyhow::anyhow!("{err}"))
+    pub fn signals(&self) -> broadcast::Receiver<Update> {
+        self.signals.resubscribe()
     }
 
     pub async fn resolve(&self, target: &str) -> Result<PeerRef> {

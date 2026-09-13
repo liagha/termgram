@@ -5,6 +5,7 @@ use anyhow::{bail, Context, Result};
 use grammers_client::media::Media;
 use grammers_client::message::InputMessage;
 use grammers_client::tl;
+use grammers_client::update::Update;
 use grammers_session::types::PeerKind;
 
 use crate::presence;
@@ -22,24 +23,66 @@ fn nid() -> i64 {
 impl crate::Client {
     pub async fn wait(
         &self,
-        target: &str,
+        target: Option<&str>,
         after_id: Option<i32>,
         timeout_secs: u64,
     ) -> Result<Vec<Line>> {
-        let deadline =
-            SystemTime::now() + Duration::from_secs(timeout_secs);
-        loop {
-            let lines = self.messages(target, 10).await?;
-            let fresh: Vec<Line> = lines
-                .into_iter()
-                .filter(|l| {
-                    after_id.map_or(true, |a| l.id > a)
-                })
-                .collect();
-            if !fresh.is_empty() || SystemTime::now() >= deadline {
-                return Ok(fresh);
+        let wanted = match target {
+            Some(slot) => {
+                Some(self.resolve(slot).await?.id.bot_api_dialog_id().unwrap_or(0))
             }
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            None => None,
+        };
+        let fresh = |lines: Vec<Line>| -> Vec<Line> {
+            lines
+                .into_iter()
+                .filter(|l| after_id.map_or(true, |a| l.id > a))
+                .collect()
+        };
+        if let Some(slot) = target {
+            let now = fresh(self.messages(slot, 20).await?);
+            if !now.is_empty() {
+                return Ok(now);
+            }
+        }
+        let mut events = self.signals();
+        let deadline = SystemTime::now() + Duration::from_secs(timeout_secs);
+        loop {
+            let left = deadline
+                .duration_since(SystemTime::now())
+                .unwrap_or_default();
+            if left.is_zero() {
+                break;
+            }
+            let signal = tokio::select! {
+                update = events.recv() => update.ok(),
+                _ = tokio::time::sleep(left.min(Duration::from_secs(1))) => None,
+            };
+            let Some(Update::NewMessage(msg)) = signal else {
+                continue;
+            };
+            let line = Line {
+                id: msg.id(),
+                at: msg.date().timestamp(),
+                out: msg.outgoing(),
+                who: msg.sender().and_then(|s| s.name()).map(str::to_string),
+                text: msg.text().to_string(),
+                media: msg
+                    .media()
+                    .as_ref()
+                    .and_then(crate::Label::kind)
+                    .map(str::to_string),
+            };
+            let chat = msg.peer_id().bot_api_dialog_id().unwrap_or(0);
+            let id_ok = after_id.map_or(true, |a| line.id > a);
+            let chat_ok = wanted.map_or(true, |w| chat == w);
+            if id_ok && chat_ok {
+                return Ok(vec![line]);
+            }
+        }
+        match target {
+            Some(slot) => Ok(fresh(self.messages(slot, 20).await?)),
+            None => Ok(vec![]),
         }
     }
 

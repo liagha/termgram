@@ -48,6 +48,13 @@ pub struct WatchArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct WaitArgs {
+    pub target: Option<String>,
+    pub after: Option<i32>,
+    pub timeout: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SignArgs {
     pub target: String,
     pub id: i32,
@@ -313,6 +320,16 @@ impl Server {
                 }
             }
         }
+    }
+
+    #[tool(description = "Wait (push, no polling) until a new message arrives - returns instantly on Telegram push. target: chat to watch (omit for any chat). after: only messages with id greater than this. timeout: seconds to wait (default 60, max 110)")]
+    async fn wait(&self, Parameters(args): Parameters<WaitArgs>) -> String {
+        let timeout = args.timeout.unwrap_or(60).clamp(1, 110);
+        self.run(
+            self.client
+                .wait(args.target.as_deref(), args.after, timeout),
+        )
+        .await
     }
 
     #[tool(description = "Send text and/or files to a chat. files: one file sends a photo, document, or voice note by type, several send an album. text.format: plain, markdown, or html. text.dates: exact date text in the message to render as tappable chips. reply: message id to reply to. topic: forum topic id to send into. at: future unix timestamp to schedule the send")]

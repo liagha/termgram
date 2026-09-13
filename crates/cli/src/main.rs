@@ -83,11 +83,15 @@ async fn watch(
             )
             .await;
     }
-    let mut stream = client.messages_stream().await?;
+    let mut events = client.signals();
     println!("watching... (Ctrl-C to stop)");
     loop {
-        match stream.next().await {
-            Ok(update) => match update {
+        let update = match events.recv().await {
+            Ok(update) => update,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(_) => break,
+        };
+        match update {
                 Update::NewMessage(msg) => {
                     let chat = msg.peer_id().bot_api_dialog_id().unwrap_or(0);
                     if let Some(want) = want {
@@ -167,10 +171,9 @@ async fn watch(
                     _ => {}
                 },
                 _ => {}
-            },
-            Err(err) => eprintln!("update error: {err}"),
-        }
+            }
     }
+    Ok(())
 }
 
 fn dump<T: serde::Serialize>(json: bool, value: &T) -> Result<()> {
