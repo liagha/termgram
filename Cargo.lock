@@ -2562,6 +2562,7 @@ name = "termgram"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "dirs",
  "grammers-client",
  "grammers-mtsender",
@@ -2569,6 +2570,7 @@ dependencies = [
  "libsql",
  "rpassword",
  "serde",
+ "serde_json",
  "tokio",
  "toml",
 ]
@@ -2580,6 +2582,9 @@ dependencies = [
  "anyhow",
  "chrono",
  "clap",
+ "grammers-client",
+ "serde",
+ "serde_json",
  "termgram",
  "tokio",
 ]

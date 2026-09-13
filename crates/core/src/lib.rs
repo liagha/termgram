@@ -1,6 +1,13 @@
+pub mod accounts;
 pub mod client;
 pub mod config;
+pub mod draft;
+pub mod media;
 pub mod mirror;
+pub mod presence;
+pub mod profile;
+pub mod schedule;
+pub mod search;
 
 pub use client::Client;
 pub use config::Config;
@@ -134,4 +141,35 @@ pub struct Ack {
 pub struct Summary {
     pub chats: usize,
     pub lines: usize,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Status {
+    pub who: String,
+    pub state: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Profile {
+    pub name: String,
+    pub handle: Option<String>,
+    pub id: i64,
+    pub phone: Option<String>,
+    pub about: Option<String>,
+    pub state: String,
+    pub blocked: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Planned {
+    pub id: i32,
+    pub at: i64,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Draft {
+    pub chat: i64,
+    pub name: Option<String>,
+    pub text: String,
 }

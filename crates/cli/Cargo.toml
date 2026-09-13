@@ -13,3 +13,6 @@ clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
+serde_json = "1"
+serde = "1"
+grammers-client = { version = "0.10", default-features = false }

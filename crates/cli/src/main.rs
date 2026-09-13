@@ -1,15 +1,20 @@
 mod cli;
 mod format;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
+use chrono::{Local, NaiveDateTime, NaiveTime};
 use clap::Parser;
 
-use cli::{Cli, Command};
+use cli::{Cli, Command, What};
 use format::Out;
 use termgram::{Client, Mirror, Update};
 
-async fn watch(client: &mut Client) -> Result<()> {
-    let mirror = Mirror::open().await?;
+async fn watch(client: &mut Client, target: Option<&str>) -> Result<()> {
+    let want = match target {
+        Some(t) => Some(client.resolve(t).await?.id.bot_api_dialog_id().unwrap_or(0)),
+        None => None,
+    };
+    let mirror = Mirror::open(&client.mirror()).await?;
     let mut iter = client.raw.iter_dialogs();
     while let Some(dialog) = iter.next().await? {
         mirror
@@ -29,6 +34,12 @@ async fn watch(client: &mut Client) -> Result<()> {
         match stream.next().await {
             Ok(update) => match update {
                 Update::NewMessage(msg) => {
+                    let chat = msg.peer_id().bot_api_dialog_id().unwrap_or(0);
+                    if let Some(want) = want {
+                        if chat != want {
+                            continue;
+                        }
+                    }
                     let who = if msg.outgoing() {
                         "you"
                     } else {
@@ -44,7 +55,7 @@ async fn watch(client: &mut Client) -> Result<()> {
                     println!("{text}");
                     mirror
                         .insert_message(
-                            msg.peer_id().bot_api_dialog_id().unwrap_or(0),
+                            chat,
                             msg.id(),
                             msg.date().timestamp(),
                             msg.outgoing() as i32,
@@ -65,6 +76,36 @@ async fn watch(client: &mut Client) -> Result<()> {
                         msg.text()
                     );
                 }
+                Update::Raw(raw) => match &*raw {
+                    grammers_client::tl::enums::Update::MessageReactions(ur) => {
+                        let grammers_client::tl::enums::MessageReactions::Reactions(page) =
+                            &ur.reactions;
+                        for raw in &page.results {
+                            let grammers_client::tl::enums::ReactionCount::Count(count) = raw;
+                            let emoji = match &count.reaction {
+                                grammers_client::tl::enums::Reaction::Emoji(e) => {
+                                    e.emoticon.clone()
+                                }
+                                grammers_client::tl::enums::Reaction::CustomEmoji(_) => {
+                                    "custom".to_string()
+                                }
+                                grammers_client::tl::enums::Reaction::Paid => "paid".to_string(),
+                                grammers_client::tl::enums::Reaction::Empty => "?".to_string(),
+                            };
+                            println!("[react {}] {} x{}", ur.msg_id, emoji, count.count);
+                        }
+                    }
+                    grammers_client::tl::enums::Update::UserTyping(u) => {
+                        println!("[typing] user {}: {u:?}", u.user_id);
+                    }
+                    grammers_client::tl::enums::Update::ChatUserTyping(u) => {
+                        println!("[typing] chat {}: {u:?}", u.chat_id);
+                    }
+                    grammers_client::tl::enums::Update::ChannelUserTyping(u) => {
+                        println!("[typing] channel {}: {u:?}", u.channel_id);
+                    }
+                    _ => {}
+                },
                 _ => {}
             },
             Err(err) => eprintln!("update error: {err}"),
@@ -72,12 +113,42 @@ async fn watch(client: &mut Client) -> Result<()> {
     }
 }
 
+fn dump<T: serde::Serialize>(json: bool, value: &T) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(value)?);
+    }
+    Ok(())
+}
+
+fn parse_at(s: &str) -> Result<u64> {
+    if s == "now" {
+        return Ok(Local::now().timestamp() as u64);
+    }
+    if let Ok(t) = NaiveTime::parse_from_str(s, "%H:%M") {
+        let when = Local::now()
+            .date_naive()
+            .and_time(t)
+            .and_local_timezone(Local)
+            .single()
+            .with_context(|| format!("can't parse time from {s:?}"))?;
+        return Ok(when.timestamp() as u64);
+    }
+    if let Ok(dt) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M") {
+        let when = dt
+            .and_local_timezone(Local)
+            .single()
+            .with_context(|| format!("can't parse datetime from {s:?}"))?;
+        return Ok(when.timestamp() as u64);
+    }
+    bail!("at must be now, HH:MM, or YYYY-MM-DD HH:MM")
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let cfg = termgram::Config::load()?;
     let api_hash = cfg.api_hash.clone();
-    let mut client = Client::new(&cfg).await?;
+    let mut client = Client::new(&cfg, &cli.account).await?;
     match cli.op {
         Command::Login => {
             let me = client.login(&api_hash).await?;
@@ -86,14 +157,22 @@ async fn main() -> Result<()> {
         Command::Logout => println!("{}", client.logout().await?.text),
         Command::Me => {
             let me = client.me().await?;
-            print!("{}", me.name);
-            if let Some(handle) = me.handle {
-                print!(" / @{handle}");
+            dump(cli.json, &me)?;
+            if !cli.json {
+                print!("{}", me.name);
+                if let Some(handle) = me.handle {
+                    print!(" / @{handle}");
+                }
+                println!(" (id {})", me.id);
             }
-            println!(" (id {})", me.id);
         }
         Command::Dialogs => {
-            for dialog in client.dialogs().await? {
+            let rows = client.dialogs().await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for dialog in rows {
                 println!("{}", dialog.name);
                 let marker = if dialog.unread > 0 {
                     format!(" ({})", dialog.unread)
@@ -119,14 +198,14 @@ async fn main() -> Result<()> {
             }
         }
         Command::Messages { target, limit } => {
-            for line in client.messages(&target, limit).await? {
-                println!(
-                    "[{}] {} {}: {}",
-                    line.id,
-                    Out::date(line.at),
-                    Out::who(&line),
-                    line.text
-                );
+            let rows = client.messages(&target, limit).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for line in rows {
+                let at = if cli.full { Out::date(line.at) } else { Out::time(line.at) };
+                println!("[{}] {at} {}: {}", line.id, Out::who(&line), line.text);
             }
         }
         Command::Send { target, text, reply } => {
@@ -136,13 +215,21 @@ async fn main() -> Result<()> {
         Command::Read { target } => {
             println!("{}", client.mark_as_read(&target).await?.text);
         }
-        Command::Watch => watch(&mut client).await?,
+        Command::Watch { target } => watch(&mut client, target.as_deref()).await?,
         Command::Sync { limit } => {
             let s = client.sync(limit).await?;
-            println!("synced {} chats, {} lines", s.chats, s.lines);
+            dump(cli.json, &s)?;
+            if !cli.json {
+                println!("synced {} chats, {} lines", s.chats, s.lines);
+            }
         }
         Command::Search { query, chat } => {
-            for hit in client.search(&query, chat.as_deref()).await? {
+            let rows = client.search(&query, chat.as_deref()).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for hit in rows {
                 println!(
                     "[{}] {} {}: {}",
                     hit.chat,
@@ -193,7 +280,12 @@ async fn main() -> Result<()> {
             }
         }
         Command::Contacts => {
-            for contact in client.contacts().await? {
+            let rows = client.contacts().await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for contact in rows {
                 match contact.handle {
                     Some(handle) => println!("{} / @{handle}", contact.name),
                     None => println!("{}", contact.name),
@@ -201,7 +293,12 @@ async fn main() -> Result<()> {
             }
         }
         Command::Folders => {
-            for folder in client.folders().await? {
+            let rows = client.folders().await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for folder in rows {
                 println!("{} {}", folder.id, folder.title);
             }
         }
@@ -213,12 +310,22 @@ async fn main() -> Result<()> {
             println!("{}", client.folder_rm(id).await?.text);
         }
         Command::Pinned { target, limit } => {
-            for pinned in client.pinned(&target, limit).await? {
+            let rows = client.pinned(&target, limit).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for pinned in rows {
                 println!("[{}] {}", pinned.id, pinned.text);
             }
         }
         Command::Members { target } => {
-            for member in client.members(&target).await? {
+            let rows = client.members(&target).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for member in rows {
                 println!("{}", member.name);
             }
         }
@@ -236,6 +343,165 @@ async fn main() -> Result<()> {
                 "{}",
                 client.promote(&target, &user, rank.as_deref()).await?.text
             );
+        }
+        Command::Typing { target } => {
+            println!("{}", client.typing(&target).await?.text);
+        }
+        Command::Status { target } => {
+            let status = client.status(&target).await?;
+            dump(cli.json, &status)?;
+            if !cli.json {
+                println!("{}: {}", status.who, status.state);
+            }
+        }
+        Command::Schedule { target, text, at } => {
+            let sent = client.schedule(&target, &text, parse_at(&at)?).await?;
+            println!("scheduled {}", sent.id);
+        }
+        Command::Scheduled { target } => {
+            let rows = client.scheduled(&target).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for planned in rows {
+                println!("[{} {}] {}", planned.id, Out::date(planned.at), planned.text);
+            }
+        }
+        Command::Cancel { target, id } => {
+            println!("{}", client.cancel(&target, id).await?.text);
+        }
+        Command::Draft { target, text } => {
+            println!(
+                "{}",
+                client.draft(&target, text.as_deref()).await?.text
+            );
+        }
+        Command::Drafts => {
+            let rows = client.drafts().await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for draft in rows {
+                let id = draft.chat.to_string();
+                let chat = draft.name.as_deref().unwrap_or(&id);
+                println!("{chat}: {}", draft.text);
+            }
+        }
+        Command::Profile { target } => {
+            let profile = client.profile(&target).await?;
+            dump(cli.json, &profile)?;
+            if !cli.json {
+                println!("{} / @{} (id {})", profile.name, profile.handle.unwrap_or_default(), profile.id);
+                println!("state: {}", profile.state);
+                if let Some(about) = profile.about {
+                    println!("about: {about}");
+                }
+                println!("blocked: {}", profile.blocked);
+            }
+        }
+        Command::Set { what } => match what {
+            What::Name { first, last } => {
+                println!("{}", client.setname(&first, &last).await?.text);
+            }
+            What::Bio { about } => {
+                println!("{}", client.setbio(&about).await?.text);
+            }
+            What::Photo { path } => {
+                println!("{}", client.setphoto(&path).await?.text);
+            }
+        },
+        Command::Block { target } => {
+            println!("{}", client.block(&target).await?.text);
+        }
+        Command::Unblock { target } => {
+            println!("{}", client.unblock(&target).await?.text);
+        }
+        Command::Searchall { query, limit } => {
+            let rows = client.searchall(&query, limit).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for hit in rows {
+                println!(
+                    "[{}] {} {}: {}",
+                    hit.chat,
+                    Out::date(hit.line.at),
+                    Out::who(&hit.line),
+                    hit.line.text
+                );
+            }
+        }
+        Command::Searchin {
+            target,
+            query,
+            limit,
+        } => {
+            let rows = client.searchin(&target, &query, limit).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for line in rows {
+                println!(
+                    "[{}] {} {}: {}",
+                    line.id,
+                    Out::date(line.at),
+                    Out::who(&line),
+                    line.text
+                );
+            }
+        }
+        Command::Photo {
+            target,
+            path,
+            caption,
+        } => {
+            let sent = client.photo(&target, &path, caption.as_deref()).await?;
+            println!("sent {}", sent.id);
+        }
+        Command::Album {
+            target,
+            paths,
+            caption,
+        } => {
+            let done = client.album(&target, &paths, caption.as_deref()).await?;
+            println!("sent album with {} items", done.n);
+        }
+        Command::Voice { target, path } => {
+            let sent = client.voice(&target, &path).await?;
+            println!("sent {}", sent.id);
+        }
+        Command::Cached { target, limit } => {
+            let mirror = Mirror::open(&client.mirror()).await?;
+            let rows = mirror.lines(&target, limit).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for row in rows {
+                let who = match row.who {
+                    Some(name) => name,
+                    None => "?".to_string(),
+                };
+                let at = if cli.full { Out::date(row.at) } else { Out::time(row.at) };
+                println!("[{}] {at} {who}: {}", row.id, row.text);
+            }
+        }
+        Command::Grab { target } => {
+            let done = client.grab(&target).await?;
+            println!("grabbed {} media files", done.n);
+        }
+        Command::Export { path } => {
+            println!("{}", client.export(path.as_deref().unwrap_or("termgram-export")).await?.text);
+        }
+        Command::Import { path } => {
+            println!("{}", client.import(&path).await?.text);
+        }
+        Command::Wipe => {
+            println!("{}", client.wipe().await?.text);
         }
     }
     Ok(())

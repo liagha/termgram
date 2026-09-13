@@ -1,7 +1,7 @@
+use std::path::Path;
+
 use anyhow::Result;
 use libsql::Value;
-
-use crate::config::Config;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS chats (
@@ -40,6 +40,7 @@ CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
 END;
 ";
 
+#[derive(Debug, serde::Serialize)]
 pub struct Row {
     pub id: i32,
     pub at: i64,
@@ -68,8 +69,8 @@ pub struct Mirror {
 }
 
 impl Mirror {
-    pub async fn open() -> Result<Self> {
-        let db = libsql::Builder::new_local(Config::mirror()).build().await?;
+    pub async fn open(path: &Path) -> Result<Self> {
+        let db = libsql::Builder::new_local(path).build().await?;
         let conn = db.connect()?;
         conn.execute_batch("PRAGMA journal_mode=WAL;").await?;
         conn.execute_batch(SCHEMA).await?;
@@ -119,6 +120,42 @@ impl Mirror {
                 libsql::params![chat, id, date, out, text(sender), body, text(media)],
             )
             .await;
+    }
+
+    pub async fn chat_name(&self, id: i64) -> Option<String> {
+        let mut rows = self
+            .conn
+            .query("SELECT name FROM chats WHERE id = ?1", libsql::params![id])
+            .await
+            .ok()?;
+        rows.next().await.ok().flatten()?.get::<String>(0).ok()
+    }
+
+    pub async fn lines(&self, chat: &str, limit: usize) -> Result<Vec<Row>> {
+        let mut rows = self
+            .conn
+            .query(
+                "SELECT m.date, m.out, m.sender, m.text, c.name, m.id
+                 FROM messages m
+                 JOIN chats c ON c.id = m.chat
+                 WHERE c.id = ?1 OR c.name = ?1 OR c.username = ?1
+                 ORDER BY m.date DESC
+                 LIMIT ?2",
+                libsql::params![chat, limit as i64],
+            )
+            .await?;
+        let mut out = vec![];
+        while let Some(row) = rows.next().await? {
+            out.push(Row {
+                id: row.get(5).unwrap_or_default(),
+                at: row.get(0).unwrap_or_default(),
+                out: row.get(1).unwrap_or_default(),
+                who: row.get(2).unwrap_or_default(),
+                text: row.get(3).unwrap_or_default(),
+                chat: row.get(4).unwrap_or_default(),
+            });
+        }
+        Ok(out)
     }
 
     pub async fn search(&self, q: &str, chat: Option<&str>) -> Result<Vec<Row>> {

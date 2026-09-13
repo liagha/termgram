@@ -119,6 +119,77 @@ pub struct PromoteArgs {
     pub rank: Option<String>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ScheduleArgs {
+    pub target: String,
+    pub text: String,
+    pub at: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DraftArgs {
+    pub target: String,
+    pub text: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct NameArgs {
+    pub first: String,
+    pub last: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BioArgs {
+    pub about: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PhotoArgs {
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SearchallArgs {
+    pub query: String,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SearchinArgs {
+    pub target: String,
+    pub query: String,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AlbumArgs {
+    pub target: String,
+    pub paths: Vec<String>,
+    pub caption: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct VoiceArgs {
+    pub target: String,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CachedArgs {
+    pub target: String,
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ExportArgs {
+    pub path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ImportArgs {
+    pub path: String,
+}
+
 struct Server {
     client: Client,
 }
@@ -301,12 +372,144 @@ impl Server {
         )
         .await
     }
+
+    #[tool(description = "Broadcast a typing action in a chat")]
+    async fn typing(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.typing(&args.target)).await
+    }
+
+    #[tool(description = "Show a user's online status")]
+    async fn status(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.status(&args.target)).await
+    }
+
+    #[tool(description = "Schedule a message for a future unix timestamp")]
+    async fn schedule(&self, Parameters(args): Parameters<ScheduleArgs>) -> String {
+        self.run(self.client.schedule(&args.target, &args.text, args.at as u64))
+            .await
+    }
+
+    #[tool(description = "List scheduled messages of a chat")]
+    async fn scheduled(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.scheduled(&args.target)).await
+    }
+
+    #[tool(description = "Cancel a scheduled message of a chat")]
+    async fn cancel(&self, Parameters(args): Parameters<SignArgs>) -> String {
+        self.run(self.client.cancel(&args.target, args.id)).await
+    }
+
+    #[tool(description = "Save or clear (empty text) a draft in a chat")]
+    async fn draft(&self, Parameters(args): Parameters<DraftArgs>) -> String {
+        self.run(self.client.draft(&args.target, args.text.as_deref()))
+            .await
+    }
+
+    #[tool(description = "List all saved drafts")]
+    async fn drafts(&self, _: Parameters<Empty>) -> String {
+        self.run(self.client.drafts()).await
+    }
+
+    #[tool(description = "Show a user's full profile")]
+    async fn profile(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.profile(&args.target)).await
+    }
+
+    #[tool(description = "Set your account first and last name")]
+    async fn setname(&self, Parameters(args): Parameters<NameArgs>) -> String {
+        self.run(self.client.setname(&args.first, &args.last)).await
+    }
+
+    #[tool(description = "Set your account bio")]
+    async fn setbio(&self, Parameters(args): Parameters<BioArgs>) -> String {
+        self.run(self.client.setbio(&args.about)).await
+    }
+
+    #[tool(description = "Set your account profile photo from a local file")]
+    async fn setphoto(&self, Parameters(args): Parameters<PhotoArgs>) -> String {
+        self.run(self.client.setphoto(&args.path)).await
+    }
+
+    #[tool(description = "Block a user")]
+    async fn block(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.block(&args.target)).await
+    }
+
+    #[tool(description = "Unblock a user")]
+    async fn unblock(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.unblock(&args.target)).await
+    }
+
+    #[tool(description = "Search all chats in the local sync mirror")]
+    async fn searchall(&self, Parameters(args): Parameters<SearchallArgs>) -> String {
+        let limit = args.limit.unwrap_or(20) as usize;
+        self.run(self.client.searchall(&args.query, limit)).await
+    }
+
+    #[tool(description = "Search messages within one chat")]
+    async fn searchin(&self, Parameters(args): Parameters<SearchinArgs>) -> String {
+        let limit = args.limit.unwrap_or(20) as usize;
+        self.run(self.client.searchin(&args.target, &args.query, limit))
+            .await
+    }
+
+    #[tool(description = "Send a photo to a chat")]
+    async fn photo(&self, Parameters(args): Parameters<UploadArgs>) -> String {
+        self.run(
+            self.client
+                .photo(&args.target, &args.path, args.caption.as_deref()),
+        )
+        .await
+    }
+
+    #[tool(description = "Send multiple files as one media album")]
+    async fn album(&self, Parameters(args): Parameters<AlbumArgs>) -> String {
+        self.run(self.client.album(&args.target, &args.paths, args.caption.as_deref()))
+            .await
+    }
+
+    #[tool(description = "Send an audio file as a voice message")]
+    async fn voice(&self, Parameters(args): Parameters<VoiceArgs>) -> String {
+        self.run(self.client.voice(&args.target, &args.path)).await
+    }
+
+    #[tool(description = "Read cached messages of a chat from the local mirror")]
+    async fn cached(&self, Parameters(args): Parameters<CachedArgs>) -> String {
+        let limit = args.limit.unwrap_or(20) as usize;
+        match termgram::Mirror::open(&self.client.mirror()).await {
+            Ok(mirror) => self
+                .run(mirror.lines(&args.target, limit))
+                .await,
+            Err(err) => format!("error: {err}"),
+        }
+    }
+
+    #[tool(description = "Download every media of a chat into the local media dir")]
+    async fn grab(&self, Parameters(args): Parameters<TargetArgs>) -> String {
+        self.run(self.client.grab(&args.target)).await
+    }
+
+    #[tool(description = "Export the account session, mirror and config to a folder")]
+    async fn export(&self, Parameters(args): Parameters<ExportArgs>) -> String {
+        let path = args.path.as_deref().unwrap_or("termgram-export");
+        self.run(self.client.export(path)).await
+    }
+
+    #[tool(description = "Import an exported account folder into this session")]
+    async fn import(&self, Parameters(args): Parameters<ImportArgs>) -> String {
+        self.run(self.client.import(&args.path)).await
+    }
+
+    #[tool(description = "Delete the session, mirror and media of the current account")]
+    async fn wipe(&self, _: Parameters<Empty>) -> String {
+        self.run(self.client.wipe()).await
+    }
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cfg = termgram::Config::load()?;
-    let client = Client::new(&cfg).await?;
+    let client = Client::new(&cfg, "default").await?;
     if client.raw.is_authorized().await.unwrap_or(false) {
         eprintln!("termgram-mcp serving");
     } else {

@@ -23,18 +23,25 @@ use crate::{
 
 pub struct Client {
     pub raw: Raw,
+    pub(crate) account: String,
     updates: Option<mpsc::UnboundedReceiver<UpdatesLike>>,
 }
 
 impl Client {
-    pub async fn new(cfg: &Config) -> Result<Self> {
-        let session = Arc::new(SqliteSession::open(&Config::session()).await?);
+    pub async fn new(cfg: &Config, account: &str) -> Result<Self> {
+        let file = if account == "default" {
+            Config::session()
+        } else {
+            Config::under(account).join("session.db")
+        };
+        let session = Arc::new(SqliteSession::open(&file).await?);
         let pool = SenderPool::new(session, cfg.api_id);
         let updates = pool.updates;
         tokio::spawn(pool.runner.run());
         let raw = Raw::new(pool.handle);
         Ok(Self {
             raw,
+            account: account.to_string(),
             updates: Some(updates),
         })
     }
@@ -64,16 +71,48 @@ impl Client {
                 "no dialog with id {id} - run `termgram dialogs` or use @username"
             );
         }
-        let peer = self
+        let name = target.strip_prefix('@').unwrap_or(target);
+        if let Ok(Some(peer)) = self.raw.resolve_username(name).await {
+            if let Ok(Some(peer)) = peer.to_ref().await {
+                return Ok(peer);
+            }
+        }
+        match self.contact(name).await? {
+            Some(peer) => Ok(peer),
+            None => bail!("peer not found - run `termgram dialogs`, use @username, or a contact name"),
+        }
+    }
+
+    async fn contact(&self, name: &str) -> Result<Option<PeerRef>> {
+        let res = self
             .raw
-            .resolve_username(target)
-            .await
-            .map_err(|err| anyhow::anyhow!("{err}"))?
-            .context("peer not found")?;
-        peer.to_ref()
-            .await
-            .map_err(|err| anyhow::anyhow!("{err}"))?
-            .context("peer \"{target}\" not usable")
+            .invoke(&tl::functions::contacts::GetContacts { hash: 0 })
+            .await?;
+        let tl::enums::contacts::Contacts::Contacts(page) = res else {
+            return Ok(None);
+        };
+        let want = name.trim().to_ascii_lowercase();
+        for raw in page.contacts {
+            let tl::enums::Contact::Contact(meta) = raw;
+            let Some(tl::enums::User::User(who)) = page.users.iter().find(|user| match user {
+                tl::enums::User::User(u) => u.id == meta.user_id,
+                _ => false,
+            }) else {
+                continue;
+            };
+            let full = format!(
+                "{} {}",
+                who.first_name.as_deref().unwrap_or(""),
+                who.last_name.as_deref().unwrap_or("")
+            )
+            .trim()
+            .to_ascii_lowercase();
+            let first = who.first_name.as_deref().unwrap_or("").to_ascii_lowercase();
+            if full == want || first == want {
+                return Ok(Some((who.clone()).into()));
+            }
+        }
+        Ok(None)
     }
 
     fn identity(user: &User) -> Identity {
@@ -234,8 +273,8 @@ impl Client {
         bail!("no media in {target}")
     }
 
-    async fn save_media(&self, target: &str, id: i32, media: &Media) -> Result<Path> {
-        std::fs::create_dir_all(Config::media())?;
+    pub(crate) async fn save_media(&self, target: &str, id: i32, media: &Media) -> Result<Path> {
+        std::fs::create_dir_all(self.media())?;
         let ext = match media {
             Media::Document(doc) => doc
                 .name()
@@ -244,7 +283,7 @@ impl Client {
                 .unwrap_or_else(|| Label::ext(media).to_string()),
             _ => Label::ext(media).to_string(),
         };
-        let path = Config::media().join(format!("{target}_{id}.{ext}"));
+        let path = self.media().join(format!("{target}_{id}.{ext}"));
         self.raw.download_media(media, &path).await?;
         Ok(Path {
             path: path.display().to_string(),
@@ -306,7 +345,7 @@ impl Client {
     }
 
     pub async fn sync(&self, limit: usize) -> Result<Summary> {
-        let mirror = Mirror::open().await?;
+        let mirror = Mirror::open(&self.mirror()).await?;
         let mut chats = 0;
         let mut lines = 0;
         let mut iter = self.raw.iter_dialogs();
@@ -336,13 +375,9 @@ impl Client {
                         m.id(),
                         m.date().timestamp(),
                         m.outgoing() as i32,
-m.sender().and_then(|s| s.name()).map(str::to_string).as_deref(),
+                        m.sender().and_then(|s| s.name()).map(str::to_string).as_deref(),
                         m.text(),
-                        m.media()
-                            .as_ref()
-                            .map(Label::kind)
-                            .unwrap_or(None)
-                            .as_deref(),
+                        m.media().as_ref().map(Label::kind).flatten(),
                     )
                     .await;
                 lines += 1;
@@ -353,7 +388,7 @@ m.sender().and_then(|s| s.name()).map(str::to_string).as_deref(),
     }
 
     pub async fn search(&self, q: &str, chat: Option<&str>) -> Result<Vec<Hit>> {
-        let mirror = Mirror::open().await?;
+        let mirror = Mirror::open(&self.mirror()).await?;
         let mut rows = vec![];
         for row in mirror.search(q, chat).await? {
             rows.push(Hit {

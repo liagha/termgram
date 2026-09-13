@@ -31,6 +31,10 @@ impl Config {
         Self::dir().join("media")
     }
 
+    pub fn under(account: &str) -> PathBuf {
+        Self::dir().join(account)
+    }
+
     pub fn ensure() -> Result<()> {
         fs::create_dir_all(Self::dir())?;
         let file = Self::file();
