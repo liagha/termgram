@@ -176,6 +176,10 @@ Or in any standard MCP client:
 }
 ```
 
+`termgram-mcp --catalog` starts a session-less mode that answers only MCP
+discovery calls (no Telegram connection). It exists so directory services can
+introspect the server without credentials.
+
 ### Tools
 
 Every CLI command is exposed as a tool. `send` accepts the same unified model

@@ -696,8 +696,136 @@ impl Server {
     }
 }
 
+const CATALOG: &[(&str, &str)] = &[
+    ("login", "Check login state; interactive OTP login only via `termgram login` in a terminal"),
+    ("logout", "Log out the current session"),
+    ("me", "Show the logged-in account identity"),
+    ("dialogs", "List chats with unread count and last message preview"),
+    ("messages", "Show recent messages in a chat, newest last"),
+    ("poll", "Create a poll in a chat with 2 to 10 answer options"),
+    ("topics", "List forum topics in a forum-enabled chat"),
+    ("watch", "Snapshot the last messages of a chat, or the latest dialogs when target is omitted"),
+    ("wait", "Wait (push, no polling) until a new message arrives"),
+    ("notify", "Control the server-to-client push filter for new-message notifications"),
+    ("send", "Send text and/or files to a chat"),
+    ("read", "Mark a chat as read"),
+    ("sync", "Sync dialog list and recent messages into the local search mirror"),
+    ("search", "Search the local sync mirror for messages"),
+    ("upload", "Upload a file to a chat (sends a photo, document, or voice note by type; caption is rich text)"),
+    ("download", "Download media from a chat message to the local media dir"),
+    ("edit", "Edit a message you sent"),
+    ("delete", "Delete messages from a chat"),
+    ("forward", "Forward messages between chats"),
+    ("pin", "Pin or unpin a message in a chat"),
+    ("react", "React to a message with an emoji, or remove the reaction"),
+    ("reactions", "List the reactions on a message"),
+    ("contacts", "List contacts of the account"),
+    ("add_contact", "Add a contact by phone number"),
+    ("delete_contact", "Delete a contact"),
+    ("export_contacts", "Export all contacts of the account"),
+    ("import_contacts", "Import contacts by phone number"),
+    ("block_list", "List blocked users"),
+    ("del_photo", "Remove the profile photo of a chat"),
+    ("folders", "List chat folders"),
+    ("folder_new", "Create a chat folder with the given chats"),
+    ("folder_rm", "Delete a chat folder"),
+    ("pinned", "List pinned messages of a chat"),
+    ("members", "List members of a group or channel"),
+    ("kick", "Kick a user from a group"),
+    ("ban", "Ban a user in a channel"),
+    ("unban", "Unban a user in a channel"),
+    ("promote", "Promote a user to admin in a channel"),
+    ("typing", "Broadcast a typing action in a chat"),
+    ("status", "Show a user's online status"),
+    ("schedule", "Schedule a rich text message for a future unix timestamp"),
+    ("scheduled", "List scheduled messages of a chat"),
+    ("cancel", "Cancel a scheduled message of a chat"),
+    ("draft", "Save or clear a draft in a chat"),
+    ("drafts", "List all saved drafts"),
+    ("profile", "Show a user's full profile"),
+    ("setname", "Set your account first and last name"),
+    ("setbio", "Set your account bio"),
+    ("setphoto", "Set your account profile photo from a local file"),
+    ("block", "Block a user"),
+    ("unblock", "Unblock a user"),
+    ("searchall", "Search all chats in the local sync mirror"),
+    ("searchin", "Search messages within one chat"),
+    ("photo", "Send a photo to a chat (caption is rich text)"),
+    ("album", "Send multiple files as one media album (caption is plain text)"),
+    ("voice", "Send an audio file as a voice message"),
+    ("cached", "Read cached messages of a chat from the local mirror"),
+    ("grab", "Download every media of a chat into the local media dir"),
+    ("export", "Export the account session, mirror and config to a folder"),
+    ("import", "Import an exported account folder into this session"),
+    ("wipe", "Delete the session, mirror and media of the current account"),
+];
+
+async fn catalog() -> anyhow::Result<()> {
+    use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+    let tools = CATALOG
+        .iter()
+        .map(|(name, description)| {
+            json!({
+                "name": name,
+                "description": description,
+                "inputSchema": { "type": "object", "properties": {} }
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut stdin = tokio::io::BufReader::new(tokio::io::stdin()).lines();
+    let mut stdout = tokio::io::stdout();
+    while let Some(line) = stdin.next_line().await? {
+        let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        let id = msg.get("id").cloned();
+        let Some(method) = msg.get("method").and_then(|m| m.as_str()) else {
+            continue;
+        };
+        let result = match method {
+            "initialize" => json!({
+                "protocolVersion": "2025-06-18",
+                "capabilities": { "tools": { "listChanged": false } },
+                "serverInfo": {
+                    "name": "termgram-mcp",
+                    "version": env!("CARGO_PKG_VERSION")
+                }
+            }),
+            "ping" => json!(null),
+            "tools/list" => json!({ "tools": &tools }),
+            "resources/list" => json!({ "resources": [] }),
+            "resources/templates/list" => json!({ "resourceTemplates": [] }),
+            "prompts/list" => json!({ "prompts": [] }),
+            _ => {
+                let Some(id) = id else { continue };
+                let error = json!({
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "error": { "code": -32601, "message": "method not found" }
+                });
+                stdout
+                    .write_all(serde_json::to_string(&error)?.as_bytes())
+                    .await?;
+                stdout.write_all(b"\n").await?;
+                stdout.flush().await?;
+                continue;
+            }
+        };
+        if let Some(id) = id {
+            let out = json!({ "jsonrpc": "2.0", "id": id, "result": result });
+            stdout.write_all(serde_json::to_string(&out)?.as_bytes()).await?;
+            stdout.write_all(b"\n").await?;
+            stdout.flush().await?;
+        }
+    }
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if std::env::args().any(|a| a == "--catalog") {
+        return catalog().await;
+    }
     let cfg = termgram::Config::load()?;
     let client = Client::new(&cfg, "default").await?;
     if client.raw.is_authorized().await.unwrap_or(false) {
