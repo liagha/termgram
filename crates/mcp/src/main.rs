@@ -431,6 +431,24 @@ pub struct MigrateArgs {
     pub target: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ProxyDiscoverArgs {
+    #[serde(default = "default_timeout")]
+    pub timeout: u64,
+    #[serde(default = "default_concurrency")]
+    pub concurrency: usize,
+}
+
+fn default_timeout() -> u64 { 10 }
+fn default_concurrency() -> usize { 50 }
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ProxyUseArgs {
+    pub server: String,
+    pub port: u16,
+    pub secret: String,
+}
+
 struct Server {
     client: Client,
     watch: Arc<Mutex<Watch>>,
@@ -1043,6 +1061,61 @@ impl Server {
     async fn migrate(&self, Parameters(args): Parameters<MigrateArgs>) -> String {
         self.run(self.client.migrate_to_supergroup(&args.target)).await
     }
+
+    #[tool(description = "Discover and test MTProto proxies from public sources")]
+    async fn proxy_discover(&self, Parameters(args): Parameters<ProxyDiscoverArgs>) -> String {
+        self.run(async { termgram::proxy::discover(args.timeout, args.concurrency).await }).await
+    }
+
+    #[tool(description = "List cached proxies with latency")]
+    async fn proxy_list(&self, _: Parameters<Empty>) -> String {
+        self.run(async { termgram::proxy::list_cached() }).await
+    }
+
+    #[tool(description = "Configure a specific proxy for the connection")]
+    async fn proxy_use(&self, Parameters(args): Parameters<ProxyUseArgs>) -> String {
+        let mut cfg = match termgram::Config::load() {
+            Ok(cfg) => cfg,
+            Err(e) => return format!("error: {e}"),
+        };
+        cfg.proxy = termgram::config::ProxyConfig {
+            enabled: true,
+            server: args.server,
+            port: args.port,
+            secret: args.secret,
+            proxy_type: termgram::config::ProxyType::Mtproto,
+        };
+        if let Err(e) = cfg.save() {
+            return format!("error: {e}");
+        }
+        Self::json("proxy configured, restart termgram to use it")
+    }
+
+    #[tool(description = "Clear the configured proxy (use direct connection)")]
+    async fn proxy_clear(&self, _: Parameters<Empty>) -> String {
+        let mut cfg = match termgram::Config::load() {
+            Ok(cfg) => cfg,
+            Err(e) => return format!("error: {e}"),
+        };
+        cfg.proxy = termgram::config::ProxyConfig::default();
+        if let Err(e) = cfg.save() {
+            return format!("error: {e}");
+        }
+        Self::json("proxy cleared, restart termgram to use direct connection")
+    }
+
+    #[tool(description = "Show the currently configured proxy")]
+    async fn proxy_status(&self, _: Parameters<Empty>) -> String {
+        let cfg = match termgram::Config::load() {
+            Ok(cfg) => cfg,
+            Err(e) => return format!("error: {e}"),
+        };
+        if cfg.proxy.enabled {
+            Self::json(format!("proxy: {}:{} (MTProto)", cfg.proxy.server, cfg.proxy.port))
+        } else {
+            Self::json("proxy: disabled (direct connection)")
+        }
+    }
 }
 
 const CATALOG: &[(&str, &str)] = &[
@@ -1140,6 +1213,11 @@ const CATALOG: &[(&str, &str)] = &[
     ("set_emoji_status", "Set your animated emoji status (omit to clear)"),
     ("close_friend", "Toggle close friends for a user"),
     ("migrate", "Migrate a basic group to a supergroup"),
+    ("proxy_discover", "Discover and test MTProto proxies from public sources"),
+    ("proxy_list", "List cached proxies with latency"),
+    ("proxy_use", "Configure a specific proxy for the connection"),
+    ("proxy_clear", "Clear the configured proxy (use direct connection)"),
+    ("proxy_status", "Show the currently configured proxy"),
 ];
 
 async fn catalog() -> anyhow::Result<()> {

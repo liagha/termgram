@@ -707,6 +707,39 @@ pub enum Command {
     },
     /// Wipe your session, mirror, and media
     Wipe,
+    /// Proxy discovery and management
+    Proxy {
+        #[command(subcommand)]
+        op: ProxyOp,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum ProxyOp {
+    /// Discover and test MTProto proxies from public sources
+    Discover {
+        /// Timeout per proxy in seconds (default 10)
+        #[arg(long, default_value_t = 10, help = "Timeout per proxy in seconds")]
+        timeout: u64,
+        /// Concurrent checks (default 50)
+        #[arg(long, default_value_t = 50, help = "Concurrent proxy checks")]
+        concurrency: usize,
+    },
+    /// List cached proxies with latency
+    List,
+    /// Use a specific proxy for the connection
+    Use {
+        /// Proxy server (hostname or IP)
+        server: String,
+        /// Proxy port
+        port: u16,
+        /// MTProto secret (hex, base64, or FAST format)
+        secret: String,
+    },
+    /// Clear the configured proxy (use direct connection)
+    Clear,
+    /// Show the currently configured proxy
+    Status,
 }
 
 #[derive(Subcommand)]

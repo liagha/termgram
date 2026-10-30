@@ -8,6 +8,7 @@ pub mod mirror;
 pub mod poll;
 pub mod presence;
 pub mod profile;
+pub mod proxy;
 pub mod schedule;
 pub mod search;
 pub mod send;

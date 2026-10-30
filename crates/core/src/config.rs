@@ -5,13 +5,32 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Context, Result};
 use rpassword;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use webbrowser;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, Default)]
+pub struct ProxyConfig {
+    pub enabled: bool,
+    pub server: String,
+    pub port: u16,
+    pub secret: String,
+    pub proxy_type: ProxyType,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, Default, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ProxyType {
+    #[default]
+    Mtproto,
+    Socks5,
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Config {
     pub api_id: i32,
     pub api_hash: String,
+    #[serde(default)]
+    pub proxy: ProxyConfig,
 }
 
 impl Config {
@@ -29,6 +48,10 @@ impl Config {
 
     pub fn mirror() -> PathBuf {
         Self::dir().join("mirror.db")
+    }
+
+    pub fn proxy_cache() -> PathBuf {
+        Self::dir().join("proxy_cache.json")
     }
 
     pub fn media() -> PathBuf {
@@ -67,6 +90,12 @@ impl Config {
         Ok(config)
     }
 
+    pub fn save(&self) -> Result<()> {
+        let toml = toml::to_string_pretty(self)?;
+        fs::write(Self::file(), toml)?;
+        Ok(())
+    }
+
     fn prompt_setup() -> Result<Self> {
         let _ = webbrowser::open("https://my.telegram.org/apps");
 
@@ -97,10 +126,13 @@ impl Config {
             bail!("api_hash must not be empty");
         }
 
-        let config = Config { api_id, api_hash };
+        let config = Config {
+            api_id,
+            api_hash,
+            proxy: ProxyConfig::default(),
+        };
 
-        let toml = format!("api_id = {}\napi_hash = \"{}\"\n", config.api_id, config.api_hash);
-        fs::write(Self::file(), &toml)?;
+        config.save()?;
         println!("saved to {}", Self::file().display());
 
         Ok(config)

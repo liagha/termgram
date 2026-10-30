@@ -7,8 +7,8 @@ description = "Personal-account Telegram MTProto client core: messages, media, c
 repository = "https://github.com/liagha/termgram"
 
 [dependencies]
-grammers-client = { version = "0.10", features = ["fs", "markdown", "html"] }
-grammers-mtsender = "0.10"
+grammers-client = { version = "0.10", features = ["fs", "markdown", "html", "proxy"] }
+grammers-mtsender = { version = "0.10", features = ["proxy"] }
 grammers-session = "0.10"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
@@ -21,3 +21,9 @@ schemars = "1"
 toml = { version = "1", features = ["serde"] }
 chrono = "0.4"
 libsql = "0.9"
+base64 = "0.22"
+hex = "0.4"
+reqwest = { version = "0.12", features = ["json"] }
+url = "2.5"
+futures = "0.3"
+hickory-resolver = { version = "0.24", features = ["tokio"] }

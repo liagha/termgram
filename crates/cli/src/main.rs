@@ -238,6 +238,73 @@ fn parse_at(s: &str) -> Result<u64> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    // Handle proxy commands without connecting to Telegram
+    if let Command::Proxy { op } = &cli.op {
+        let _cfg = termgram::Config::load()?;
+        match op {
+            cli::ProxyOp::Discover { timeout, concurrency } => {
+                let proxies = with_feedback(
+                    "discovering proxies",
+                    cli.json,
+                    termgram::proxy::discover(*timeout, *concurrency),
+                )
+                .await?;
+                if cli.json {
+                    dump(cli.json, &proxies)?;
+                } else {
+                    for p in proxies {
+                        println!(
+                            "{}:{} - {}ms (from {})",
+                            p.server,
+                            p.port,
+                            p.latency_ms.unwrap_or(0),
+                            p.source
+                        );
+                    }
+                }
+            }
+            cli::ProxyOp::List => {
+                let proxies = termgram::proxy::list_cached()?;
+                if cli.json {
+                    dump(cli.json, &proxies)?;
+                } else {
+                    for p in proxies {
+                        let latency = p.latency_ms.map(|l| format!("{}ms", l)).unwrap_or_else(|| "untested".to_string());
+                        println!("{}:{} - {} [{}]", p.server, p.port, latency, p.source);
+                    }
+                }
+            }
+            cli::ProxyOp::Use { server, port, secret } => {
+                let mut cfg = termgram::Config::load()?;
+                cfg.proxy = termgram::config::ProxyConfig {
+                    enabled: true,
+                    server: server.clone(),
+                    port: *port,
+                    secret: secret.clone(),
+                    proxy_type: termgram::config::ProxyType::Mtproto,
+                };
+                cfg.save()?;
+                println!("proxy configured, restart termgram to use it");
+            }
+            cli::ProxyOp::Clear => {
+                let mut cfg = termgram::Config::load()?;
+                cfg.proxy = termgram::config::ProxyConfig::default();
+                cfg.save()?;
+                println!("proxy cleared, restart termgram to use direct connection");
+            }
+            cli::ProxyOp::Status => {
+                let cfg = termgram::Config::load()?;
+                if cfg.proxy.enabled {
+                    println!("proxy: {}:{} (MTProto)", cfg.proxy.server, cfg.proxy.port);
+                } else {
+                    println!("proxy: disabled (direct connection)");
+                }
+            }
+        }
+        return Ok(());
+    }
+
     let cfg = termgram::Config::load()?;
     let api_hash = cfg.api_hash.clone();
     let mut client = with_feedback(
@@ -1307,6 +1374,7 @@ async fn main() -> Result<()> {
                 with_feedback("wiping", cli.json, client.wipe()).await?.text
             );
         }
+        Command::Proxy { .. } => unreachable!("handled earlier"),
     }
     Ok(())
 }

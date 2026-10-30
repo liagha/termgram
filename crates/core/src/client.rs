@@ -15,6 +15,7 @@ use tokio::sync::broadcast;
 
 use crate::config::Config;
 use crate::mirror::Mirror;
+use crate::proxy::apply_proxy_to_config;
 use crate::{
     Ack, Contact, Dialog, Done, Folder, Hit, Identity, Label, Line, Member, Path, Pinned, Reaction,
     Summary,
@@ -77,7 +78,13 @@ impl Client {
             Config::under(account).join("session.db")
         };
         let session = Arc::new(SqliteSession::open(&file).await?);
-        let pool = SenderPool::new(session, cfg.api_id);
+
+        let mut params = grammers_mtsender::ConnectionParams::default();
+        if cfg.proxy.enabled {
+            apply_proxy_to_config(&mut params, &cfg.proxy);
+        }
+
+        let pool = SenderPool::with_configuration(session, cfg.api_id, params);
         let updates = pool.updates;
         tokio::spawn(pool.runner.run());
         let raw = Raw::new(pool.handle);
