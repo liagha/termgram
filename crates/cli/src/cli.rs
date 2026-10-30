@@ -725,6 +725,15 @@ pub enum ProxyOp {
         #[arg(long, default_value_t = 50, help = "Concurrent proxy checks")]
         concurrency: usize,
     },
+    /// Re-test cached proxies
+    Retest {
+        /// Timeout per proxy in seconds (default 10)
+        #[arg(long, default_value_t = 10, help = "Timeout per proxy in seconds")]
+        timeout: u64,
+        /// Concurrent checks (default 50)
+        #[arg(long, default_value_t = 50, help = "Concurrent proxy checks")]
+        concurrency: usize,
+    },
     /// List cached proxies with latency
     List,
     /// Use a specific proxy for the connection

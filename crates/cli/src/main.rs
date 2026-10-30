@@ -264,13 +264,38 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            cli::ProxyOp::Retest { timeout, concurrency } => {
+                let proxies = with_feedback(
+                    "retesting cached proxies",
+                    cli.json,
+                    termgram::proxy::retest_cached(*timeout, *concurrency),
+                )
+                .await?;
+                if cli.json {
+                    dump(cli.json, &proxies)?;
+                } else {
+                    for p in proxies {
+                        println!(
+                            "{}:{} - {}ms (from {})",
+                            p.server,
+                            p.port,
+                            p.latency_ms.unwrap_or(0),
+                            p.source
+                        );
+                    }
+                }
+            }
             cli::ProxyOp::List => {
                 let proxies = termgram::proxy::list_cached()?;
                 if cli.json {
                     dump(cli.json, &proxies)?;
                 } else {
                     for p in proxies {
-                        let latency = p.latency_ms.map(|l| format!("{}ms", l)).unwrap_or_else(|| "untested".to_string());
+                        let latency = match (p.latency_ms, p.last_checked) {
+                            (Some(ms), _) => format!("{}ms", ms),
+                            (None, Some(_)) => "failed".to_string(),
+                            (None, None) => "untested".to_string(),
+                        };
                         println!("{}:{} - {} [{}]", p.server, p.port, latency, p.source);
                     }
                 }

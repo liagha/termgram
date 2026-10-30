@@ -341,3 +341,35 @@ pub fn apply_proxy_to_config(config: &mut ConnectionParams, proxy: &crate::confi
         config.proxy_url = Some(format!("socks5://{}:{}", proxy.server, proxy.port));
     }
 }
+
+/// Re-test all cached proxies
+pub async fn retest_cached(timeout_secs: u64, concurrency: usize) -> Result<Vec<Proxy>> {
+    let cache = ProxyCache::load()?;
+    let proxies: Vec<_> = cache.proxies.into_iter().filter(|p| p.latency_ms.is_none() || p.latency_ms.is_some()).collect();
+    if proxies.is_empty() {
+        println!("no cached proxies to test");
+        return Ok(vec![]);
+    }
+    println!("re-testing {} cached proxies...", proxies.len());
+    let checked = check_proxies(&proxies, concurrency, timeout_secs).await?;
+
+    let mut new_cache = ProxyCache::load()?;
+    for proxy in &checked {
+        new_cache.upsert(proxy.clone());
+    }
+    new_cache.save()?;
+
+    let working: Vec<_> = checked.iter().filter(|p| p.latency_ms.is_some()).cloned().collect();
+    println!("found {} working proxies", working.len());
+
+    for p in &working {
+        println!(
+            "  {}:{} - {}ms",
+            p.server,
+            p.port,
+            p.latency_ms.unwrap()
+        );
+    }
+
+    Ok(working)
+}
