@@ -102,7 +102,7 @@ impl crate::Client {
         };
         let ids = if args.files.is_empty() {
             let Some((raw, entities)) = rich else {
-                bail!("nothing to send: give a text or a file")
+                bail!("nothing to send: provide a message, e.g. `termgram send me 'hello'`, or add a file with `--file`")
             };
             let msg = InputMessage::new()
                 .text(raw)

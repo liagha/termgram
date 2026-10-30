@@ -10,7 +10,7 @@ use grammers_session::types::PeerKind;
 
 use crate::presence;
 use crate::{
-    Ack, Chat, Contact, Done, Identity, Line, Member, PhoneContact, Sent,
+    Ack, Chat, Contact, Done, Identity, Line, Member, PhoneContact, Sent, Session,
 };
 
 fn nid() -> i64 {
@@ -1100,5 +1100,257 @@ impl crate::Client {
             v.push(p.into());
         }
         Ok(v)
+    }
+
+    pub async fn send_location(
+        &self,
+        target: &str,
+        lat: f64,
+        lon: f64,
+    ) -> Result<Sent> {
+        let peer = self.resolve(target).await?;
+        let msg = grammers_client::message::InputMessage::new().media(
+            tl::enums::InputMedia::GeoPoint(
+                tl::types::InputMediaGeoPoint {
+                    geo_point: tl::enums::InputGeoPoint::Point(tl::types::InputGeoPoint {
+                        lat,
+                        long: lon,
+                        accuracy_radius: None,
+                    }),
+                },
+            ),
+        );
+        let res = self.raw.send_message(peer, msg).await?;
+        Ok(Sent { ids: vec![res.id()] })
+    }
+
+    pub async fn send_venue(
+        &self,
+        target: &str,
+        title: &str,
+        address: &str,
+        lat: f64,
+        lon: f64,
+    ) -> Result<Sent> {
+        let peer = self.resolve(target).await?;
+        let msg = grammers_client::message::InputMessage::new().media(
+            tl::enums::InputMedia::Venue(
+                tl::types::InputMediaVenue {
+                    geo_point: tl::enums::InputGeoPoint::Point(tl::types::InputGeoPoint {
+                        lat,
+                        long: lon,
+                        accuracy_radius: None,
+                    }),
+                    title: title.to_string(),
+                    address: address.to_string(),
+                    provider: String::new(),
+                    venue_id: String::new(),
+                    venue_type: String::new(),
+                },
+            ),
+        );
+        let res = self.raw.send_message(peer, msg).await?;
+        Ok(Sent { ids: vec![res.id()] })
+    }
+
+    pub async fn send_contact(
+        &self,
+        target: &str,
+        phone: &str,
+        first_name: &str,
+        last_name: &str,
+    ) -> Result<Sent> {
+        let peer = self.resolve(target).await?;
+        let msg = grammers_client::message::InputMessage::new().media(
+            tl::enums::InputMedia::Contact(
+                tl::types::InputMediaContact {
+                    phone_number: phone.to_string(),
+                    first_name: first_name.to_string(),
+                    last_name: last_name.to_string(),
+                    vcard: String::new(),
+                },
+            ),
+        );
+        let res = self.raw.send_message(peer, msg).await?;
+        Ok(Sent { ids: vec![res.id()] })
+    }
+
+    pub async fn send_dice(&self, target: &str) -> Result<Sent> {
+        let peer = self.resolve(target).await?;
+        let msg = grammers_client::message::InputMessage::new().media(
+            tl::enums::InputMedia::Dice(
+                tl::types::InputMediaDice {
+                    emoticon: "🎲".to_string(),
+                },
+            ),
+        );
+        let res = self.raw.send_message(peer, msg).await?;
+        Ok(Sent { ids: vec![res.id()] })
+    }
+
+    pub async fn stop_poll(&self, _target: &str, _id: i32) -> Result<Ack> {
+        bail!("stop_poll is not supported in this grammers version")
+    }
+
+    pub async fn set_username(&self, username: &str) -> Result<Ack> {
+        self.raw
+            .invoke(&tl::functions::account::UpdateUsername {
+                username: username.to_string(),
+            })
+            .await?;
+        Ok(Ack {
+            text: "username set".into(),
+        })
+    }
+
+    pub async fn remove_username(&self) -> Result<Ack> {
+        self.raw
+            .invoke(&tl::functions::account::UpdateUsername {
+                username: String::new(),
+            })
+            .await?;
+        Ok(Ack {
+            text: "username removed".into(),
+        })
+    }
+
+    pub async fn sessions(&self) -> Result<Vec<Session>> {
+        let res = self
+            .raw
+            .invoke(&tl::functions::account::GetAuthorizations {})
+            .await?;
+        let tl::enums::account::Authorizations::Authorizations(page) = res;
+        Ok(page
+            .authorizations
+            .into_iter()
+            .map(|a| match a {
+                tl::enums::Authorization::Authorization(auth) => Session {
+                    hash: auth.hash,
+                    device_model: auth.device_model,
+                    app_version: auth.app_version,
+                    system_version: auth.system_version,
+                    ip: auth.ip,
+                    country: auth.country,
+                    region: auth.region,
+                    app_name: auth.app_name,
+                },
+            })
+            .collect())
+    }
+
+    pub async fn terminate_session(&self, hash: i64) -> Result<Ack> {
+        self.raw
+            .invoke(&tl::functions::account::ResetAuthorization { hash })
+            .await?;
+        Ok(Ack {
+            text: "session terminated".into(),
+        })
+    }
+
+    pub async fn password_hint(&self) -> Result<Ack> {
+        let res = self.raw.invoke(&tl::functions::account::GetPassword {}).await?;
+        let tl::enums::account::Password::Password(p) = res;
+        Ok(Ack {
+            text: p.hint.unwrap_or_default(),
+        })
+    }
+
+    pub async fn set_password(&self, _password: &str, _hint: &str) -> Result<Ack> {
+        bail!("setting 2FA password requires SRP - use official Telegram clients")
+    }
+
+    pub async fn remove_password(&self, _password: &str) -> Result<Ack> {
+        bail!("removing 2FA password requires SRP - use official Telegram clients")
+    }
+
+    pub async fn archive_chat(&self, _target: &str, _archive: bool) -> Result<Ack> {
+        bail!("archive_chat is not supported in this grammers version")
+    }
+
+    pub async fn pin_dialog(&self, target: &str, pin: bool) -> Result<Ack> {
+        let peer = self.resolve(target).await?;
+        self.raw
+            .invoke(&tl::functions::messages::ToggleDialogPin {
+                pinned: pin,
+                peer: tl::enums::InputDialogPeer::Peer(tl::types::InputDialogPeer {
+                    peer: (&peer).into(),
+                }),
+            })
+            .await?;
+        Ok(Ack {
+            text: if pin { "pinned" } else { "unpinned" }.into(),
+        })
+    }
+
+    pub async fn slow_mode(&self, target: &str, seconds: i32) -> Result<Ack> {
+        let peer = self.resolve(target).await?;
+        match peer.id.kind() {
+            PeerKind::Channel | PeerKind::Chat => {
+                let channel: tl::enums::InputChannel = (&peer).into();
+                self.raw
+                    .invoke(&tl::functions::channels::ToggleSlowMode {
+                        channel,
+                        seconds,
+                    })
+                    .await?;
+            }
+            _ => bail!("slow mode only works in groups and channels"),
+        }
+        Ok(Ack {
+            text: if seconds == 0 {
+                "slow mode disabled"
+            } else {
+                "slow mode enabled"
+            }
+            .into(),
+        })
+    }
+
+    pub async fn create_sticker_set(
+        &self,
+        _title: &str,
+        _short_name: &str,
+        _files: &[String],
+    ) -> Result<Identity> {
+        bail!("create_sticker_set is not supported in this grammers version")
+    }
+
+    pub async fn set_emoji_status(&self, emoji: Option<&str>) -> Result<Ack> {
+        let status = match emoji {
+            Some(_) => tl::enums::EmojiStatus::Status(tl::types::EmojiStatus {
+                document_id: 0,
+                until: None,
+            }),
+            None => tl::enums::EmojiStatus::Empty,
+        };
+        self.raw
+            .invoke(&tl::functions::account::UpdateEmojiStatus {
+                emoji_status: status,
+            })
+            .await?;
+        Ok(Ack {
+            text: match emoji {
+                Some(e) => format!("emoji status set to {e}"),
+                None => "emoji status cleared".into(),
+            },
+        })
+    }
+
+    pub async fn close_friend(&self, _target: &str) -> Result<Ack> {
+        bail!("close_friend is not supported in this grammers version")
+    }
+
+    pub async fn migrate_to_supergroup(&self, target: &str) -> Result<Ack> {
+        let peer = self.resolve(target).await?;
+        let chat_id = match peer.id.kind() {
+            PeerKind::Chat => peer.id.bare_id().unwrap_or(0),
+            _ => bail!("only basic groups can be migrated to supergroups"),
+        };
+        self.raw
+            .invoke(&tl::functions::messages::MigrateChat { chat_id })
+            .await?;
+        Ok(Ack {
+            text: "migrated to supergroup".into(),
+        })
     }
 }

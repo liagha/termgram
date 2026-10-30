@@ -266,3 +266,15 @@ pub struct Draft {
     pub name: Option<String>,
     pub text: String,
 }
+
+#[derive(Debug, Serialize)]
+pub struct Session {
+    pub hash: i64,
+    pub device_model: String,
+    pub app_version: String,
+    pub system_version: String,
+    pub ip: String,
+    pub country: String,
+    pub region: String,
+    pub app_name: String,
+}

@@ -250,6 +250,187 @@ pub struct ImportArgs {
     pub path: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MuteArgs {
+    pub target: String,
+    pub forever: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AdminsArgs {
+    pub target: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct BannedArgs {
+    pub target: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DemoteArgs {
+    pub target: String,
+    pub user: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct InviteArgs {
+    pub target: String,
+    pub users: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RenameArgs {
+    pub target: String,
+    pub title: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AboutArgs {
+    pub target: String,
+    pub about: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ChatPhotoArgs {
+    pub target: String,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct InviteLinkArgs {
+    pub target: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct FlushArgs {
+    pub target: String,
+    pub revoke: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SendStickerArgs {
+    pub target: String,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MediaInfoArgs {
+    pub target: String,
+    pub id: i32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UnpinAllArgs {
+    pub target: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ContextArgs {
+    pub target: String,
+    pub id: i32,
+    #[serde(default)]
+    pub size: i32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct LocationArgs {
+    pub target: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct VenueArgs {
+    pub target: String,
+    pub title: String,
+    pub address: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ContactArgs {
+    pub target: String,
+    pub phone: String,
+    pub first: String,
+    pub last: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DiceArgs {
+    pub target: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct StopPollArgs {
+    pub target: String,
+    pub id: i32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UsernameArgs {
+    pub username: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct TerminateSessionArgs {
+    pub hash: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PasswordHintArgs {}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SetPasswordArgs {
+    pub password: String,
+    pub hint: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct RemovePasswordArgs {
+    pub password: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct ArchiveArgs {
+    pub target: String,
+    pub archive: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct PinDialogArgs {
+    pub target: String,
+    pub pin: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SlowModeArgs {
+    pub target: String,
+    pub seconds: i32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CreateStickerSetArgs {
+    pub title: String,
+    pub short_name: String,
+    pub files: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct EmojiStatusArgs {
+    pub emoji: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct CloseFriendArgs {
+    pub target: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct MigrateArgs {
+    pub target: String,
+}
+
 struct Server {
     client: Client,
     watch: Arc<Mutex<Watch>>,
@@ -694,6 +875,174 @@ impl Server {
     async fn wipe(&self, _: Parameters<Empty>) -> String {
         self.run(self.client.wipe()).await
     }
+
+    #[tool(description = "Mute or unmute chat notifications. forever=true mutes forever; omit or false unmutes")]
+    async fn mute(&self, Parameters(args): Parameters<MuteArgs>) -> String {
+        self.run(self.client.mute(&args.target, args.forever)).await
+    }
+
+    #[tool(description = "List admins of a group or channel")]
+    async fn admins(&self, Parameters(args): Parameters<AdminsArgs>) -> String {
+        self.run(self.client.admins(&args.target)).await
+    }
+
+    #[tool(description = "List banned users in a channel")]
+    async fn banned(&self, Parameters(args): Parameters<BannedArgs>) -> String {
+        self.run(self.client.banned(&args.target)).await
+    }
+
+    #[tool(description = "Demote a user from admin in a channel")]
+    async fn demote(&self, Parameters(args): Parameters<DemoteArgs>) -> String {
+        self.run(self.client.demote(&args.target, &args.user)).await
+    }
+
+    #[tool(description = "Invite users to a group or channel (repeat users)")]
+    async fn invite(&self, Parameters(args): Parameters<InviteArgs>) -> String {
+        self.run(self.client.invite(&args.target, &args.users)).await
+    }
+
+    #[tool(description = "Rename a group or channel")]
+    async fn rename(&self, Parameters(args): Parameters<RenameArgs>) -> String {
+        self.run(self.client.edit_title(&args.target, &args.title)).await
+    }
+
+    #[tool(description = "Set the description of a group or channel")]
+    async fn about(&self, Parameters(args): Parameters<AboutArgs>) -> String {
+        self.run(self.client.edit_about(&args.target, &args.about)).await
+    }
+
+    #[tool(description = "Change the photo of a group or channel")]
+    async fn chat_photo(&self, Parameters(args): Parameters<ChatPhotoArgs>) -> String {
+        self.run(self.client.edit_photo(&args.target, &args.path)).await
+    }
+
+    #[tool(description = "Export an invite link for a chat")]
+    async fn invite_link(&self, Parameters(args): Parameters<InviteLinkArgs>) -> String {
+        self.run(self.client.invite_link(&args.target)).await
+    }
+
+    #[tool(description = "Clear history of a chat. revoke=true also removes history for other participants")]
+    async fn flush(&self, Parameters(args): Parameters<FlushArgs>) -> String {
+        self.run(self.client.flush(&args.target, args.revoke)).await
+    }
+
+    #[tool(description = "Send a sticker to a chat")]
+    async fn send_sticker(&self, Parameters(args): Parameters<SendStickerArgs>) -> String {
+        self.run(self.client.send_sticker(&args.target, &args.path)).await
+    }
+
+    #[tool(description = "List installed sticker packs")]
+    async fn sticker_sets(&self, _: Parameters<Empty>) -> String {
+        self.run(self.client.sticker_sets()).await
+    }
+
+    #[tool(description = "Show media info of a message")]
+    async fn media_info(&self, Parameters(args): Parameters<MediaInfoArgs>) -> String {
+        self.run(self.client.media_info(&args.target, args.id)).await
+    }
+
+    #[tool(description = "Unpin all messages in a chat")]
+    async fn unpin_all(&self, Parameters(args): Parameters<UnpinAllArgs>) -> String {
+        self.run(self.client.unpin_all(&args.target)).await
+    }
+
+    #[tool(description = "Show messages around a given message ID")]
+    async fn context(&self, Parameters(args): Parameters<ContextArgs>) -> String {
+        self.run(self.client.context(&args.target, args.id, args.size)).await
+    }
+
+    #[tool(description = "Send a location to a chat")]
+    async fn send_location(&self, Parameters(args): Parameters<LocationArgs>) -> String {
+        self.run(self.client.send_location(&args.target, args.lat, args.lon)).await
+    }
+
+    #[tool(description = "Send a venue to a chat")]
+    async fn send_venue(&self, Parameters(args): Parameters<VenueArgs>) -> String {
+        self.run(self.client.send_venue(&args.target, &args.title, &args.address, args.lat, args.lon)).await
+    }
+
+    #[tool(description = "Send a contact card to a chat")]
+    async fn send_contact(&self, Parameters(args): Parameters<ContactArgs>) -> String {
+        self.run(self.client.send_contact(&args.target, &args.phone, &args.first, &args.last)).await
+    }
+
+    #[tool(description = "Send a dice to a chat")]
+    async fn send_dice(&self, Parameters(args): Parameters<DiceArgs>) -> String {
+        self.run(self.client.send_dice(&args.target)).await
+    }
+
+    #[tool(description = "Stop a poll in a chat")]
+    async fn stop_poll(&self, Parameters(args): Parameters<StopPollArgs>) -> String {
+        self.run(self.client.stop_poll(&args.target, args.id)).await
+    }
+
+    #[tool(description = "Set your account username (omit to remove)")]
+    async fn set_username(&self, Parameters(args): Parameters<UsernameArgs>) -> String {
+        match args.username {
+            Some(u) => self.run(self.client.set_username(&u)).await,
+            None => self.run(self.client.remove_username()).await,
+        }
+    }
+
+    #[tool(description = "List connected sessions (authorized devices)")]
+    async fn sessions(&self, _: Parameters<Empty>) -> String {
+        self.run(self.client.sessions()).await
+    }
+
+    #[tool(description = "Terminate a connected session")]
+    async fn terminate_session(&self, Parameters(args): Parameters<TerminateSessionArgs>) -> String {
+        self.run(self.client.terminate_session(args.hash)).await
+    }
+
+    #[tool(description = "Show two-factor authentication password hint")]
+    async fn password_hint(&self, _: Parameters<PasswordHintArgs>) -> String {
+        self.run(self.client.password_hint()).await
+    }
+
+    #[tool(description = "Set or change your two-factor authentication password")]
+    async fn set_password(&self, Parameters(args): Parameters<SetPasswordArgs>) -> String {
+        self.run(self.client.set_password(&args.password, &args.hint)).await
+    }
+
+    #[tool(description = "Remove your two-factor authentication password")]
+    async fn remove_password(&self, Parameters(args): Parameters<RemovePasswordArgs>) -> String {
+        self.run(self.client.remove_password(&args.password)).await
+    }
+
+    #[tool(description = "Archive or unarchive a chat")]
+    async fn archive_chat(&self, Parameters(args): Parameters<ArchiveArgs>) -> String {
+        self.run(self.client.archive_chat(&args.target, args.archive)).await
+    }
+
+    #[tool(description = "Pin or unpin a chat in the dialog list")]
+    async fn pin_dialog(&self, Parameters(args): Parameters<PinDialogArgs>) -> String {
+        self.run(self.client.pin_dialog(&args.target, args.pin)).await
+    }
+
+    #[tool(description = "Enable or disable slow mode in a group or channel")]
+    async fn slow_mode(&self, Parameters(args): Parameters<SlowModeArgs>) -> String {
+        self.run(self.client.slow_mode(&args.target, args.seconds)).await
+    }
+
+    #[tool(description = "Create a sticker pack")]
+    async fn create_sticker_set(&self, Parameters(args): Parameters<CreateStickerSetArgs>) -> String {
+        self.run(self.client.create_sticker_set(&args.title, &args.short_name, &args.files)).await
+    }
+
+    #[tool(description = "Set your animated emoji status (omit to clear)")]
+    async fn set_emoji_status(&self, Parameters(args): Parameters<EmojiStatusArgs>) -> String {
+        self.run(self.client.set_emoji_status(args.emoji.as_deref())).await
+    }
+
+    #[tool(description = "Toggle close friends for a user")]
+    async fn close_friend(&self, Parameters(args): Parameters<CloseFriendArgs>) -> String {
+        self.run(self.client.close_friend(&args.target)).await
+    }
+
+    #[tool(description = "Migrate a basic group to a supergroup")]
+    async fn migrate(&self, Parameters(args): Parameters<MigrateArgs>) -> String {
+        self.run(self.client.migrate_to_supergroup(&args.target)).await
+    }
 }
 
 const CATALOG: &[(&str, &str)] = &[
@@ -758,6 +1107,39 @@ const CATALOG: &[(&str, &str)] = &[
     ("export", "Export the account session, mirror and config to a folder"),
     ("import", "Import an exported account folder into this session"),
     ("wipe", "Delete the session, mirror and media of the current account"),
+    ("mute", "Mute or unmute chat notifications. forever=true mutes forever; omit or false unmutes"),
+    ("admins", "List admins of a group or channel"),
+    ("banned", "List banned users in a channel"),
+    ("demote", "Demote a user from admin in a channel"),
+    ("invite", "Invite users to a group or channel"),
+    ("rename", "Rename a group or channel"),
+    ("about", "Set the description of a group or channel"),
+    ("chat_photo", "Change the photo of a group or channel"),
+    ("invite_link", "Export an invite link for a chat"),
+    ("flush", "Clear history of a chat"),
+    ("send_sticker", "Send a sticker to a chat"),
+    ("sticker_sets", "List installed sticker packs"),
+    ("media_info", "Show media info of a message"),
+    ("unpin_all", "Unpin all messages in a chat"),
+    ("context", "Show messages around a given message ID"),
+    ("send_location", "Send a location to a chat"),
+    ("send_venue", "Send a venue to a chat"),
+    ("send_contact", "Send a contact card to a chat"),
+    ("send_dice", "Send a dice to a chat"),
+    ("stop_poll", "Stop a poll in a chat"),
+    ("set_username", "Set your account username (omit to remove)"),
+    ("sessions", "List connected sessions (authorized devices)"),
+    ("terminate_session", "Terminate a connected session"),
+    ("password_hint", "Show two-factor authentication password hint"),
+    ("set_password", "Set or change your two-factor authentication password"),
+    ("remove_password", "Remove your two-factor authentication password"),
+    ("archive_chat", "Archive or unarchive a chat"),
+    ("pin_dialog", "Pin or unpin a chat in the dialog list"),
+    ("slow_mode", "Enable or disable slow mode in a group or channel"),
+    ("create_sticker_set", "Create a sticker pack"),
+    ("set_emoji_status", "Set your animated emoji status (omit to clear)"),
+    ("close_friend", "Toggle close friends for a user"),
+    ("migrate", "Migrate a basic group to a supergroup"),
 ];
 
 async fn catalog() -> anyhow::Result<()> {

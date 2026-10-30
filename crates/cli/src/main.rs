@@ -6,7 +6,7 @@ use chrono::{Local, NaiveDateTime, NaiveTime};
 use clap::Parser;
 use std::time::Instant;
 
-use cli::{Cli, Command, What};
+use cli::{Cli, Command, PasswordWhat, What};
 use format::Out;
 use std::time::Duration;
 use termgram::{Client, Mirror, Update};
@@ -254,10 +254,13 @@ async fn main() -> Result<()> {
     .await?;
     match cli.op {
         Command::Login => {
-            let me = client.login(&api_hash).await?;
+            let me =
+                with_feedback("logging in", cli.json, client.login(&api_hash)).await?;
             println!("logged in as {}", me.name);
         }
-        Command::Logout => println!("{}", client.logout().await?.text),
+        Command::Logout => {
+            println!("{}", with_feedback("logging out", cli.json, client.logout()).await?.text);
+        }
         Command::Me => {
             let me = with_feedback("fetching identity", cli.json, client.me()).await?;
             dump(cli.json, &me)?;
@@ -366,7 +369,12 @@ async fn main() -> Result<()> {
             }
         }
         Command::Read { target } => {
-            println!("{}", client.mark_as_read(&target).await?.text);
+            println!(
+                "{}",
+                with_feedback("marking as read", cli.json, client.mark_as_read(&target))
+                    .await?
+                    .text
+            );
         }
         Command::Watch {
             target,
@@ -381,10 +389,13 @@ async fn main() -> Result<()> {
             anon,
             multi,
         } => {
-            for id in client
-                .poll(&target, &question, &options, anon, multi)
-                .await?
-                .ids
+            for id in with_feedback(
+                "creating poll",
+                cli.json,
+                client.poll(&target, &question, &options, anon, multi),
+            )
+            .await?
+            .ids
             {
                 println!("sent {id}");
             }
@@ -476,16 +487,34 @@ async fn main() -> Result<()> {
                 format: termgram::Format::parse(format.as_deref())?,
                 dates,
             };
-            println!("{}", client.edit(&target, id, &text).await?.text);
+            println!(
+                "{}",
+                with_feedback("editing", cli.json, client.edit(&target, id, &text))
+                    .await?
+                    .text
+            );
         }
         Command::Delete { target, ids } => {
-            println!("deleted {}", client.delete(&target, &ids).await?.n);
+            println!(
+                "deleted {}",
+                with_feedback("deleting", cli.json, client.delete(&target, &ids)).await?.n
+            );
         }
         Command::Forward { from, to, ids } => {
-            println!("forwarded {}", client.forward(&from, &to, &ids).await?.n);
+            println!(
+                "forwarded {}",
+                with_feedback("forwarding", cli.json, client.forward(&from, &to, &ids))
+                    .await?
+                    .n
+            );
         }
         Command::Pin { target, id, remove } => {
-            println!("{}", client.pin(&target, id, remove).await?.text);
+            println!(
+                "{}",
+                with_feedback("pinning", cli.json, client.pin(&target, id, remove))
+                    .await?
+                    .text
+            );
         }
         Command::React {
             target,
@@ -498,18 +527,29 @@ async fn main() -> Result<()> {
                 (Some(emoji), false) => {
                     println!(
                         "{}",
-                        client.react(&target, id, Some(&emoji), false, big).await?.text
+                        with_feedback(
+                            "reacting",
+                            cli.json,
+                            client.react(&target, id, Some(&emoji), false, big)
+                        )
+                        .await?
+                        .text
                     );
                 }
                 (None, true) => {
-                    println!("{}", client.react(&target, id, None, true, false).await?.text);
+                    println!(
+                        "{}",
+                        with_feedback("removing reaction", cli.json, client.react(&target, id, None, true, false))
+                            .await?
+                            .text
+                    );
                 }
                 (Some(_), true) => bail!("pick an emoji or --remove, not both"),
                 (None, false) => bail!("need an emoji or --remove"),
             }
         }
         Command::Reactions { target, id } => {
-            let rows = client.reactions(&target, id).await?;
+            let rows = with_feedback("fetching reactions", cli.json, client.reactions(&target, id)).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -532,13 +572,21 @@ async fn main() -> Result<()> {
             }
         }
         Command::AddContact { phone, first, last } => {
-            println!("{}", client.add_contact(&phone, &first, &last).await?.text);
+            println!(
+                "{}",
+                with_feedback("adding contact", cli.json, client.add_contact(&phone, &first, &last))
+                    .await?
+                    .text
+            );
         }
         Command::DeleteContact { target } => {
-            println!("{}", client.delete_contact(&target).await?.text);
+            println!(
+                "{}",
+                with_feedback("deleting contact", cli.json, client.delete_contact(&target)).await?.text
+            );
         }
         Command::ExportContacts => {
-            let rows = client.export_contacts().await?;
+            let rows = with_feedback("exporting contacts", cli.json, client.export_contacts()).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -563,10 +611,15 @@ async fn main() -> Result<()> {
                     last: parts[2].to_string(),
                 });
             }
-            println!("imported {} contact(s)", client.import_contacts(&contacts).await?.n);
+            println!(
+                "imported {} contact(s)",
+                with_feedback("importing contacts", cli.json, client.import_contacts(&contacts))
+                    .await?
+                    .n
+            );
         }
         Command::BlockList => {
-            let rows = client.block_list().await?;
+            let rows = with_feedback("fetching block list", cli.json, client.block_list()).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -576,10 +629,13 @@ async fn main() -> Result<()> {
             }
         }
         Command::DelPhoto { target } => {
-            println!("{}", client.del_photo(&target).await?.text);
+            println!(
+                "{}",
+                with_feedback("removing photo", cli.json, client.del_photo(&target)).await?.text
+            );
         }
         Command::Folders => {
-            let rows = client.folders().await?;
+            let rows = with_feedback("fetching folders", cli.json, client.folders()).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -589,14 +645,432 @@ async fn main() -> Result<()> {
             }
         }
         Command::FolderNew { title, include } => {
-            let folder = client.folder_new(&title, &include).await?;
+            let folder = with_feedback(
+                "creating folder",
+                cli.json,
+                client.folder_new(&title, &include),
+            )
+            .await?;
             println!("folder {} created", folder.id);
         }
         Command::FolderRm { id } => {
-            println!("{}", client.folder_rm(id).await?.text);
+            println!(
+                "{}",
+                with_feedback("removing folder", cli.json, client.folder_rm(id)).await?.text
+            );
+        }
+        Command::CreateGroup { title, users } => {
+            let sent = with_feedback(
+                "creating group",
+                cli.json,
+                client.create_group(&title, &users),
+            )
+            .await?;
+            println!(
+                "group created: {}",
+                sent.ids
+                    .first()
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            );
+        }
+        Command::CreateChannel {
+            title,
+            about,
+            users,
+        } => {
+            let sent = with_feedback(
+                "creating channel",
+                cli.json,
+                client.create_channel(&title, &about, &users),
+            )
+            .await?;
+            println!(
+                "channel created: {}",
+                sent.ids
+                    .first()
+                    .map(|id| id.to_string())
+                    .unwrap_or_else(|| "unknown".to_string())
+            );
+        }
+        Command::Leave { target } => {
+            println!(
+                "{}",
+                with_feedback("leaving", cli.json, client.leave(&target)).await?.text
+            );
+        }
+        Command::Join { link } => {
+            println!(
+                "{}",
+                with_feedback("joining", cli.json, client.join(&link)).await?.text
+            );
+        }
+        Command::Mute { target, forever } => {
+            println!(
+                "{}",
+                with_feedback("muting", cli.json, client.mute(&target, forever))
+                    .await?
+                    .text
+            );
+        }
+        Command::Admins { target } => {
+            let rows = with_feedback("fetching admins", cli.json, client.admins(&target)).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for admin in rows {
+                println!("{}", admin.name);
+            }
+        }
+        Command::Banned { target } => {
+            let rows = with_feedback("fetching banned", cli.json, client.banned(&target)).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for member in rows {
+                println!("{}", member.name);
+            }
+        }
+        Command::Demote { target, user } => {
+            println!(
+                "{}",
+                with_feedback("demoting", cli.json, client.demote(&target, &user))
+                    .await?
+                    .text
+            );
+        }
+        Command::Invite { target, users } => {
+            println!(
+                "{}",
+                with_feedback("inviting", cli.json, client.invite(&target, &users))
+                    .await?
+                    .text
+            );
+        }
+        Command::Rename { target, title } => {
+            println!(
+                "{}",
+                with_feedback("renaming", cli.json, client.edit_title(&target, &title))
+                    .await?
+                    .text
+            );
+        }
+        Command::About { target, about } => {
+            println!(
+                "{}",
+                with_feedback("setting about", cli.json, client.edit_about(&target, &about))
+                    .await?
+                    .text
+            );
+        }
+        Command::ChatPhoto { target, path } => {
+            println!(
+                "{}",
+                with_feedback("setting photo", cli.json, client.edit_photo(&target, &path))
+                    .await?
+                    .text
+            );
+        }
+        Command::InviteLink { target } => {
+            println!(
+                "{}",
+                with_feedback("exporting invite link", cli.json, client.invite_link(&target))
+                    .await?
+                    .text
+            );
+        }
+        Command::Flush { target, revoke } => {
+            println!(
+                "{}",
+                with_feedback("clearing history", cli.json, client.flush(&target, revoke))
+                    .await?
+                    .text
+            );
+        }
+        Command::SendSticker { target, path } => {
+            let show = !cli.json;
+            if show {
+                eprint!("sending sticker...");
+                let _ = std::io::Write::flush(&mut std::io::stderr());
+            }
+            let tick = Instant::now();
+            let done = match client.send_sticker(&target, &path).await {
+                Ok(v) => {
+                    if show {
+                        eprintln!(" ok {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    v
+                }
+                Err(err) => {
+                    if show {
+                        eprintln!(" failed {:.1}s", tick.elapsed().as_secs_f32());
+                    }
+                    return Err(err);
+                }
+            };
+            if done.ids.len() == 1 {
+                println!("sent sticker {}", done.ids[0]);
+            } else {
+                println!("sent {} stickers", done.ids.len());
+            }
+        }
+        Command::StickerSets => {
+            let rows = with_feedback("fetching sticker sets", cli.json, client.sticker_sets()).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for set in rows {
+                println!("{} / @{} (id {})", set.name, set.handle.unwrap_or_default(), set.id);
+            }
+        }
+        Command::MediaInfo { target, id } => {
+            println!(
+                "{}",
+                with_feedback("fetching media info", cli.json, client.media_info(&target, id))
+                    .await?
+                    .text
+            );
+        }
+        Command::UnpinAll { target } => {
+            println!(
+                "{}",
+                with_feedback("unpinning all", cli.json, client.unpin_all(&target))
+                    .await?
+                    .text
+            );
+        }
+        Command::Context { target, id, size } => {
+            let rows = with_feedback("fetching context", cli.json, client.context(&target, id, size)).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for line in rows {
+                let at = if cli.full { Out::date(line.at) } else { Out::time(line.at) };
+                println!("[{}] {at} {}: {}", line.id, Out::who(&line), line.text);
+            }
+        }
+        Command::Wait { target, after, timeout } => {
+            let rows = with_feedback("waiting", cli.json, client.wait(target.as_deref(), after, timeout)).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for line in rows {
+                let at = if cli.full { Out::date(line.at) } else { Out::time(line.at) };
+                println!("[{}] {at} {}: {}", line.id, Out::who(&line), line.text);
+            }
+        }
+        Command::Location { target, lat, lon } => {
+            let sent = with_feedback(
+                "sending location",
+                cli.json,
+                client.send_location(&target, lat, lon),
+            )
+            .await?;
+            if sent.ids.len() == 1 {
+                println!("sent {}", sent.ids[0]);
+            } else {
+                println!("sent {} messages", sent.ids.len());
+            }
+        }
+        Command::Venue { target, title, address, lat, lon } => {
+            let sent = with_feedback(
+                "sending venue",
+                cli.json,
+                client.send_venue(&target, &title, &address, lat, lon),
+            )
+            .await?;
+            if sent.ids.len() == 1 {
+                println!("sent {}", sent.ids[0]);
+            } else {
+                println!("sent {} messages", sent.ids.len());
+            }
+        }
+        Command::Contact { target, phone, first, last } => {
+            let sent = with_feedback(
+                "sending contact",
+                cli.json,
+                client.send_contact(&target, &phone, &first, &last),
+            )
+            .await?;
+            if sent.ids.len() == 1 {
+                println!("sent {}", sent.ids[0]);
+            } else {
+                println!("sent {} messages", sent.ids.len());
+            }
+        }
+        Command::Dice { target } => {
+            let sent = with_feedback(
+                "sending dice",
+                cli.json,
+                client.send_dice(&target),
+            )
+            .await?;
+            if sent.ids.len() == 1 {
+                println!("sent {}", sent.ids[0]);
+            } else {
+                println!("sent {} messages", sent.ids.len());
+            }
+        }
+        Command::StopPoll { target, id } => {
+            println!(
+                "{}",
+                with_feedback("stopping poll", cli.json, client.stop_poll(&target, id))
+                    .await?
+                    .text
+            );
+        }
+        Command::Username { username } => {
+            match username {
+                Some(u) => {
+                    println!(
+                        "{}",
+                        with_feedback("setting username", cli.json, client.set_username(&u))
+                            .await?
+                            .text
+                    );
+                }
+                None => {
+                    println!(
+                        "{}",
+                        with_feedback("removing username", cli.json, client.remove_username())
+                            .await?
+                            .text
+                    );
+                }
+            }
+        }
+        Command::Sessions => {
+            let rows = with_feedback("fetching sessions", cli.json, client.sessions()).await?;
+            dump(cli.json, &rows)?;
+            if cli.json {
+                return Ok(());
+            }
+            for session in rows {
+                println!("{} / {} ({})", session.app_name, session.device_model, session.hash);
+            }
+        }
+        Command::TerminateSession { hash } => {
+            println!(
+                "{}",
+                with_feedback("terminating session", cli.json, client.terminate_session(hash))
+                    .await?
+                    .text
+            );
+        }
+        Command::Set { what } => match what {
+            What::Password { what } => match what {
+                PasswordWhat::Hint => {
+                    let hint = with_feedback("getting password hint", cli.json, client.password_hint()).await?;
+                    dump(cli.json, &hint)?;
+                    if !cli.json {
+                        println!("{}", hint.text);
+                    }
+                }
+                PasswordWhat::Set { password, hint } => {
+                    println!(
+                        "{}",
+                        with_feedback("setting password", cli.json, client.set_password(&password, &hint))
+                            .await?
+                            .text
+                    );
+                }
+                PasswordWhat::Remove { password } => {
+                    println!(
+                        "{}",
+                        with_feedback("removing password", cli.json, client.remove_password(&password))
+                            .await?
+                            .text
+                    );
+                }
+            },
+            What::Name { first, last } => {
+                println!(
+                    "{}",
+                    with_feedback("setting name", cli.json, client.setname(&first, &last))
+                        .await?
+                        .text
+                );
+            }
+            What::Bio { about } => {
+                println!(
+                    "{}",
+                    with_feedback("setting bio", cli.json, client.setbio(&about)).await?.text
+                );
+            }
+            What::Photo { path } => {
+                println!(
+                    "{}",
+                    with_feedback("setting photo", cli.json, client.setphoto(&path)).await?.text
+                );
+            }
+        },
+        Command::Archive { target, archive } => {
+            println!(
+                "{}",
+                with_feedback("archiving", cli.json, client.archive_chat(&target, archive))
+                    .await?
+                    .text
+            );
+        }
+        Command::PinDialog { target, pin } => {
+            println!(
+                "{}",
+                with_feedback("pinning dialog", cli.json, client.pin_dialog(&target, pin))
+                    .await?
+                    .text
+            );
+        }
+        Command::SlowMode { target, seconds } => {
+            println!(
+                "{}",
+                with_feedback("setting slow mode", cli.json, client.slow_mode(&target, seconds))
+                    .await?
+                    .text
+            );
+        }
+        Command::CreateStickerSet { title, short_name, files } => {
+            let set = with_feedback(
+                "creating sticker set",
+                cli.json,
+                client.create_sticker_set(&title, &short_name, &files),
+            )
+            .await?;
+            println!(
+                "sticker set created: {} / @{}",
+                set.name, set.handle.unwrap_or_default()
+            );
+        }
+        Command::EmojiStatus { emoji } => {
+            println!(
+                "{}",
+                with_feedback("setting emoji status", cli.json, client.set_emoji_status(emoji.as_deref()))
+                    .await?
+                    .text
+            );
+        }
+        Command::CloseFriend { target } => {
+            println!(
+                "{}",
+                with_feedback("toggling close friend", cli.json, client.close_friend(&target))
+                    .await?
+                    .text
+            );
+        }
+        Command::Migrate { target } => {
+            println!(
+                "{}",
+                with_feedback("migrating to supergroup", cli.json, client.migrate_to_supergroup(&target))
+                    .await?
+                    .text
+            );
         }
         Command::Pinned { target, limit } => {
-            let rows = client.pinned(&target, limit).await?;
+            let rows = with_feedback("fetching pinned", cli.json, client.pinned(&target, limit)).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -606,7 +1080,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Members { target } => {
-            let rows = client.members(&target).await?;
+            let rows = with_feedback("fetching members", cli.json, client.members(&target)).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -616,32 +1090,50 @@ async fn main() -> Result<()> {
             }
         }
         Command::Kick { target, user } => {
-            println!("{}", client.kick(&target, &user).await?.text);
+            println!(
+                "{}",
+                with_feedback("kicking", cli.json, client.kick(&target, &user)).await?.text
+            );
         }
         Command::Ban { target, user } => {
-            println!("{}", client.ban(&target, &user).await?.text);
+            println!(
+                "{}",
+                with_feedback("banning", cli.json, client.ban(&target, &user)).await?.text
+            );
         }
         Command::Unban { target, user } => {
-            println!("{}", client.unban(&target, &user).await?.text);
+            println!(
+                "{}",
+                with_feedback("unbanning", cli.json, client.unban(&target, &user)).await?.text
+            );
         }
         Command::Promote { target, user, rank } => {
             println!(
                 "{}",
-                client.promote(&target, &user, rank.as_deref()).await?.text
+                with_feedback(
+                    "promoting",
+                    cli.json,
+                    client.promote(&target, &user, rank.as_deref())
+                )
+                .await?
+                .text
             );
         }
         Command::Typing { target } => {
-            println!("{}", client.typing(&target).await?.text);
+            println!(
+                "{}",
+                with_feedback("typing", cli.json, client.typing(&target)).await?.text
+            );
         }
         Command::Status { target } => {
-            let status = client.status(&target).await?;
+            let status = with_feedback("fetching status", cli.json, client.status(&target)).await?;
             dump(cli.json, &status)?;
             if !cli.json {
                 println!("{}: {}", status.who, status.state);
             }
         }
         Command::Scheduled { target } => {
-            let rows = client.scheduled(&target).await?;
+            let rows = with_feedback("fetching scheduled", cli.json, client.scheduled(&target)).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -651,7 +1143,10 @@ async fn main() -> Result<()> {
             }
         }
         Command::Cancel { target, id } => {
-            println!("{}", client.cancel(&target, id).await?.text);
+            println!(
+                "{}",
+                with_feedback("cancelling", cli.json, client.cancel(&target, id)).await?.text
+            );
         }
         Command::Draft {
             target,
@@ -665,10 +1160,15 @@ async fn main() -> Result<()> {
                 format,
                 dates,
             });
-            println!("{}", client.draft(&target, body.as_ref()).await?.text);
+            println!(
+                "{}",
+                with_feedback("saving draft", cli.json, client.draft(&target, body.as_ref()))
+                    .await?
+                    .text
+            );
         }
         Command::Drafts => {
-            let rows = client.drafts().await?;
+            let rows = with_feedback("fetching drafts", cli.json, client.drafts()).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -680,7 +1180,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Profile { target } => {
-            let profile = client.profile(&target).await?;
+            let profile = with_feedback("fetching profile", cli.json, client.profile(&target)).await?;
             dump(cli.json, &profile)?;
             if !cli.json {
                 println!("{} / @{} (id {})", profile.name, profile.handle.unwrap_or_default(), profile.id);
@@ -691,25 +1191,20 @@ async fn main() -> Result<()> {
                 println!("blocked: {}", profile.blocked);
             }
         }
-        Command::Set { what } => match what {
-            What::Name { first, last } => {
-                println!("{}", client.setname(&first, &last).await?.text);
-            }
-            What::Bio { about } => {
-                println!("{}", client.setbio(&about).await?.text);
-            }
-            What::Photo { path } => {
-                println!("{}", client.setphoto(&path).await?.text);
-            }
-        },
         Command::Block { target } => {
-            println!("{}", client.block(&target).await?.text);
+            println!(
+                "{}",
+                with_feedback("blocking", cli.json, client.block(&target)).await?.text
+            );
         }
         Command::Unblock { target } => {
-            println!("{}", client.unblock(&target).await?.text);
+            println!(
+                "{}",
+                with_feedback("unblocking", cli.json, client.unblock(&target)).await?.text
+            );
         }
         Command::Searchall { query, limit } => {
-            let rows = client.searchall(&query, limit).await?;
+            let rows = with_feedback("searching all chats", cli.json, client.searchall(&query, limit)).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -729,7 +1224,12 @@ async fn main() -> Result<()> {
             query,
             limit,
         } => {
-            let rows = client.searchin(&target, &query, limit).await?;
+            let rows = with_feedback(
+                "searching in chat",
+                cli.json,
+                client.searchin(&target, &query, limit),
+            )
+            .await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());
@@ -784,13 +1284,28 @@ async fn main() -> Result<()> {
             println!("grabbed {} media files", done.n);
         }
         Command::Export { path } => {
-            println!("{}", client.export(path.as_deref().unwrap_or("termgram-export")).await?.text);
+            println!(
+                "{}",
+                with_feedback(
+                    "exporting",
+                    cli.json,
+                    client.export(path.as_deref().unwrap_or("termgram-export"))
+                )
+                .await?
+                .text
+            );
         }
         Command::Import { path } => {
-            println!("{}", client.import(&path).await?.text);
+            println!(
+                "{}",
+                with_feedback("importing", cli.json, client.import(&path)).await?.text
+            );
         }
         Command::Wipe => {
-            println!("{}", client.wipe().await?.text);
+            println!(
+                "{}",
+                with_feedback("wiping", cli.json, client.wipe()).await?.text
+            );
         }
     }
     Ok(())
