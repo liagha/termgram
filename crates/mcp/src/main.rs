@@ -175,12 +175,6 @@ pub struct ScheduleArgs {
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct DraftArgs {
-    pub target: String,
-    pub text: Option<termgram::Text>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct NameArgs {
     pub first: String,
     pub last: String,
@@ -219,19 +213,6 @@ pub struct SearchinArgs {
     pub target: String,
     pub query: String,
     pub limit: Option<i32>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct AlbumArgs {
-    pub target: String,
-    pub paths: Vec<String>,
-    pub caption: Option<termgram::Text>,
-}
-
-#[derive(Debug, Deserialize, schemars::JsonSchema)]
-pub struct VoiceArgs {
-    pub target: String,
-    pub path: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -449,6 +430,67 @@ pub struct ProxyUseArgs {
     pub secret: String,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SendArgs {
+    pub target: String,
+    pub text: Option<String>,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub dates: Vec<String>,
+    #[serde(default)]
+    pub files: Vec<String>,
+    pub reply: Option<i32>,
+    pub topic: Option<i32>,
+    pub at: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct UploadArgsSimple {
+    pub target: String,
+    pub path: String,
+    pub caption: Option<String>,
+    #[serde(default)]
+    pub format: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct SendPhotoArgs {
+    pub target: String,
+    pub path: String,
+    pub caption: Option<String>,
+    #[serde(default)]
+    pub format: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct AlbumArgs {
+    pub target: String,
+    pub paths: Vec<String>,
+    pub caption: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct VoiceArgs {
+    pub target: String,
+    pub path: String,
+    pub caption: Option<String>,
+    #[serde(default)]
+    pub format: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DraftArgs {
+    pub target: String,
+    pub text: String,
+    #[serde(default)]
+    pub format: String,
+    #[serde(default)]
+    pub dates: Vec<String>,
+    pub reply: Option<i32>,
+    pub topic: Option<i32>,
+}
+
 struct Server {
     client: Client,
     watch: Arc<Mutex<Watch>>,
@@ -584,9 +626,21 @@ impl Server {
         serde_json::json!({ "on": watch.on, "chats": chats }).to_string()
     }
 
-    #[tool(description = "Send text and/or files to a chat. files: one file sends a photo, document, or voice note by type, several send an album. text.format: plain, markdown, or html. text.dates: exact date text in the message to render as tappable chips. reply: message id to reply to. topic: forum topic id to send into. at: future unix timestamp to schedule the send")]
-    async fn send(&self, Parameters(args): Parameters<termgram::Send>) -> String {
-        self.run(self.client.send(&args)).await
+    #[tool(description = "Send text and/or files to a chat. files: one file sends a photo, document, or voice note by type, several send an album. format: plain, markdown, or html. dates: exact date text in the message to render as tappable chips. reply: message id to reply to. topic: forum topic id to send into. at: future unix timestamp to schedule the send")]
+    async fn send(&self, Parameters(args): Parameters<SendArgs>) -> String {
+        let send = termgram::Send {
+            target: args.target,
+            text: args.text.map(|t| termgram::Text {
+                text: t,
+                format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
+                dates: args.dates,
+            }),
+            files: args.files,
+            reply: args.reply,
+            topic: args.topic,
+            at: args.at,
+        };
+        self.run(self.client.send(&send)).await
     }
 
     #[tool(description = "Mark a chat as read")]
@@ -607,10 +661,14 @@ impl Server {
     }
 
     #[tool(description = "Upload a file to a chat (sends a photo, document, or voice note by type; caption is rich text)")]
-    async fn upload(&self, Parameters(args): Parameters<UploadArgs>) -> String {
+    async fn upload(&self, Parameters(args): Parameters<UploadArgsSimple>) -> String {
         let send = termgram::Send {
             target: args.target,
-            text: args.caption,
+            text: args.caption.map(|c| termgram::Text {
+                text: c,
+                format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
+                dates: vec![],
+            }),
             files: vec![args.path],
             ..Default::default()
         };
@@ -779,7 +837,16 @@ impl Server {
 
     #[tool(description = "Save or clear (empty text) a draft in a chat — the draft text is rich (format, dates)")]
     async fn draft(&self, Parameters(args): Parameters<DraftArgs>) -> String {
-        self.run(self.client.draft(&args.target, args.text.as_ref())).await
+        let text = if args.text.is_empty() {
+            None
+        } else {
+            Some(termgram::Text {
+                text: args.text,
+                format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
+                dates: args.dates,
+            })
+        };
+        self.run(self.client.draft(&args.target, text.as_ref())).await
     }
 
     #[tool(description = "List all saved drafts")]
@@ -831,10 +898,14 @@ impl Server {
     }
 
     #[tool(description = "Send a photo to a chat (caption is rich text)")]
-    async fn photo(&self, Parameters(args): Parameters<UploadArgs>) -> String {
+    async fn photo(&self, Parameters(args): Parameters<SendPhotoArgs>) -> String {
         let send = termgram::Send {
             target: args.target,
-            text: args.caption,
+            text: args.caption.map(|c| termgram::Text {
+                text: c,
+                format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
+                dates: vec![],
+            }),
             files: vec![args.path],
             ..Default::default()
         };
@@ -845,7 +916,11 @@ impl Server {
     async fn album(&self, Parameters(args): Parameters<AlbumArgs>) -> String {
         let send = termgram::Send {
             target: args.target,
-            text: args.caption,
+            text: args.caption.map(|c| termgram::Text {
+                text: c,
+                format: termgram::Format::Plain,
+                dates: vec![],
+            }),
             files: args.paths,
             ..Default::default()
         };
@@ -856,6 +931,11 @@ impl Server {
     async fn voice(&self, Parameters(args): Parameters<VoiceArgs>) -> String {
         let send = termgram::Send {
             target: args.target,
+            text: args.caption.map(|c| termgram::Text {
+                text: c,
+                format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
+                dates: vec![],
+            }),
             files: vec![args.path],
             ..Default::default()
         };
