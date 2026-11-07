@@ -234,10 +234,17 @@ impl Client {
         Ok(Self::identity(&me))
     }
 
-    pub async fn dialogs(&self) -> Result<Vec<Dialog>> {
+    pub async fn dialogs(&self, limit: Option<usize>) -> Result<Vec<Dialog>> {
         let mut rows = vec![];
         let mut iter = self.raw.iter_dialogs();
+        let mut count = 0;
         while let Some(dialog) = iter.next().await? {
+            if let Some(lim) = limit {
+                if count >= lim {
+                    break;
+                }
+            }
+            count += 1;
             let (out, at, last) = match &dialog.last_message {
                 Some(m) => (
                     m.outgoing(),
@@ -263,7 +270,7 @@ impl Client {
 
     pub async fn unread(&self) -> Result<Vec<Dialog>> {
         Ok(self
-            .dialogs()
+            .dialogs(None)
             .await?
             .into_iter()
             .filter(|dialog| dialog.unread > 0)

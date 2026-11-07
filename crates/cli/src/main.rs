@@ -365,7 +365,7 @@ async fn main() -> Result<()> {
             }
         }
         Command::Dialogs => {
-            let rows = with_feedback("fetching dialogs", cli.json, client.dialogs()).await?;
+            let rows = with_feedback("fetching dialogs", cli.json, client.dialogs(None)).await?;
             dump(cli.json, &rows)?;
             if cli.json {
                 return Ok(());

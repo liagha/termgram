@@ -7,7 +7,9 @@ use rmcp::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use std::borrow::Cow;
 use std::collections::HashSet;
+use std::fmt;
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 
@@ -24,18 +26,52 @@ pub struct Empty {}
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TargetArgs {
-    pub target: String,
+    pub target: Target,
+}
+
+/// A chat target: either a username/contact name (string) or a numeric dialog ID.
+/// Accepts both JSON strings and JSON numbers so callers can pass either `"123"` or `123`.
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
+#[serde(untagged)]
+pub enum Target {
+    Str(String),
+    Num(i64),
+}
+
+impl fmt::Display for Target {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Target::Str(s) => write!(f, "{s}"),
+            Target::Num(n) => write!(f, "{n}"),
+        }
+    }
+}
+
+impl Target {
+    pub fn as_string(&self) -> String {
+        match self {
+            Target::Str(s) => s.clone(),
+            Target::Num(n) => n.to_string(),
+        }
+    }
+
+    pub fn as_cow(&self) -> Cow<'_, str> {
+        match self {
+            Target::Str(s) => Cow::Borrowed(s),
+            Target::Num(n) => Cow::Owned(n.to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MessageArgs {
-    pub target: String,
+    pub target: Target,
     pub limit: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PollArgs {
-    pub target: String,
+    pub target: Target,
     pub question: String,
     pub options: Vec<String>,
     #[serde(default)]
@@ -46,12 +82,12 @@ pub struct PollArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct TopicsArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct WatchArgs {
-    pub target: Option<String>,
+    pub target: Option<Target>,
     pub limit: Option<i32>,
     #[serde(default)]
     pub unread: bool,
@@ -72,12 +108,17 @@ pub struct NotifyArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SignArgs {
-    pub target: String,
+    pub target: Target,
     pub id: i32,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SyncArgs {
+    pub limit: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+pub struct DialogArgs {
     pub limit: Option<i32>,
 }
 
@@ -89,47 +130,47 @@ pub struct SearchArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UploadArgs {
-    pub target: String,
+    pub target: Target,
     pub path: String,
     pub caption: Option<termgram::Text>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DownloadArgs {
-    pub target: String,
+    pub target: Target,
     pub id: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct EditArgs {
-    pub target: String,
+    pub target: Target,
     pub id: i32,
     pub text: termgram::Text,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DeleteArgs {
-    pub target: String,
+    pub target: Target,
     pub ids: Vec<i32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ForwardArgs {
-    pub from: String,
-    pub to: String,
+    pub from: Target,
+    pub to: Target,
     pub ids: Vec<i32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PinArgs {
-    pub target: String,
+    pub target: Target,
     pub id: i32,
     pub remove: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReactArgs {
-    pub target: String,
+    pub target: Target,
     pub id: Option<i32>,
     pub emoji: Option<String>,
     pub remove: bool,
@@ -139,7 +180,7 @@ pub struct ReactArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ReactionArgs {
-    pub target: String,
+    pub target: Target,
     pub id: i32,
 }
 
@@ -156,20 +197,20 @@ pub struct FolderRmArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UserArgs {
-    pub target: String,
+    pub target: Target,
     pub user: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PromoteArgs {
-    pub target: String,
+    pub target: Target,
     pub user: String,
     pub rank: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ScheduleArgs {
-    pub target: String,
+    pub target: Target,
     pub text: termgram::Text,
     pub at: i64,
 }
@@ -210,14 +251,14 @@ pub struct SearchallArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SearchinArgs {
-    pub target: String,
+    pub target: Target,
     pub query: String,
     pub limit: Option<i32>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CachedArgs {
-    pub target: String,
+    pub target: Target,
     pub limit: Option<i32>,
 }
 
@@ -233,81 +274,81 @@ pub struct ImportArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MuteArgs {
-    pub target: String,
+    pub target: Target,
     pub forever: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AdminsArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct BannedArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DemoteArgs {
-    pub target: String,
+    pub target: Target,
     pub user: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InviteArgs {
-    pub target: String,
+    pub target: Target,
     pub users: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct RenameArgs {
-    pub target: String,
+    pub target: Target,
     pub title: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AboutArgs {
-    pub target: String,
+    pub target: Target,
     pub about: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ChatPhotoArgs {
-    pub target: String,
+    pub target: Target,
     pub path: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct InviteLinkArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct FlushArgs {
-    pub target: String,
+    pub target: Target,
     pub revoke: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SendStickerArgs {
-    pub target: String,
+    pub target: Target,
     pub path: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MediaInfoArgs {
-    pub target: String,
+    pub target: Target,
     pub id: i32,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UnpinAllArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ContextArgs {
-    pub target: String,
+    pub target: Target,
     pub id: i32,
     #[serde(default)]
     pub size: i32,
@@ -315,14 +356,14 @@ pub struct ContextArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct LocationArgs {
-    pub target: String,
+    pub target: Target,
     pub lat: f64,
     pub lon: f64,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct VenueArgs {
-    pub target: String,
+    pub target: Target,
     pub title: String,
     pub address: String,
     pub lat: f64,
@@ -331,7 +372,7 @@ pub struct VenueArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ContactArgs {
-    pub target: String,
+    pub target: Target,
     pub phone: String,
     pub first: String,
     pub last: String,
@@ -339,12 +380,12 @@ pub struct ContactArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DiceArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct StopPollArgs {
-    pub target: String,
+    pub target: Target,
     pub id: i32,
 }
 
@@ -374,19 +415,19 @@ pub struct RemovePasswordArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ArchiveArgs {
-    pub target: String,
+    pub target: Target,
     pub archive: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct PinDialogArgs {
-    pub target: String,
+    pub target: Target,
     pub pin: bool,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SlowModeArgs {
-    pub target: String,
+    pub target: Target,
     pub seconds: i32,
 }
 
@@ -404,12 +445,12 @@ pub struct EmojiStatusArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct CloseFriendArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct MigrateArgs {
-    pub target: String,
+    pub target: Target,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -432,7 +473,7 @@ pub struct ProxyUseArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SendArgs {
-    pub target: String,
+    pub target: Target,
     pub text: Option<String>,
     #[serde(default)]
     pub format: String,
@@ -447,7 +488,7 @@ pub struct SendArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct UploadArgsSimple {
-    pub target: String,
+    pub target: Target,
     pub path: String,
     pub caption: Option<String>,
     #[serde(default)]
@@ -456,7 +497,7 @@ pub struct UploadArgsSimple {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct SendPhotoArgs {
-    pub target: String,
+    pub target: Target,
     pub path: String,
     pub caption: Option<String>,
     #[serde(default)]
@@ -465,14 +506,14 @@ pub struct SendPhotoArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AlbumArgs {
-    pub target: String,
+    pub target: Target,
     pub paths: Vec<String>,
     pub caption: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct VoiceArgs {
-    pub target: String,
+    pub target: Target,
     pub path: String,
     pub caption: Option<String>,
     #[serde(default)]
@@ -481,7 +522,7 @@ pub struct VoiceArgs {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct DraftArgs {
-    pub target: String,
+    pub target: Target,
     pub text: String,
     #[serde(default)]
     pub format: String,
@@ -540,41 +581,42 @@ impl Server {
     }
 
     #[tool(description = "List chats with unread count and last message preview")]
-    async fn dialogs(&self, _: Parameters<Empty>) -> String {
-        self.run(self.client.dialogs()).await
+    async fn dialogs(&self, Parameters(args): Parameters<DialogArgs>) -> String {
+        let limit = args.limit.map(|l| l as usize);
+        self.run(self.client.dialogs(limit)).await
     }
 
     #[tool(description = "Show recent messages in a chat, newest last")]
     async fn messages(&self, Parameters(args): Parameters<MessageArgs>) -> String {
         let limit = args.limit.unwrap_or(20) as usize;
-        self.run(self.client.messages(&args.target, limit)).await
+        self.run(self.client.messages(&args.target.to_string(), limit)).await
     }
 
     #[tool(description = "Create a poll in a chat with 2 to 10 answer options")]
     async fn poll(&self, Parameters(args): Parameters<PollArgs>) -> String {
         self.run(
             self.client
-                .poll(&args.target, &args.question, &args.options, args.anon, args.multi),
+                .poll(&args.target.to_string(), &args.question, &args.options, args.anon, args.multi),
         )
         .await
     }
 
     #[tool(description = "List forum topics in a forum-enabled chat")]
     async fn topics(&self, Parameters(args): Parameters<TopicsArgs>) -> String {
-        self.run(self.client.topics(&args.target)).await
+        self.run(self.client.topics(&args.target.to_string())).await
     }
 
     #[tool(description = "Snapshot the last messages of a chat (or the latest dialogs when target is omitted, or only chats with unread messages when unread is set); does not follow a live stream")]
     async fn watch(&self, Parameters(args): Parameters<WatchArgs>) -> String {
         match args.target {
             Some(t) => self
-                .run(self.client.messages(&t, args.limit.unwrap_or(20).max(1) as usize))
+                .run(self.client.messages(&t.to_string(), args.limit.unwrap_or(20).max(1) as usize))
                 .await,
             None => {
                 if args.unread {
                     self.run(self.client.unread()).await
                 } else {
-                    self.run(self.client.dialogs()).await
+                    self.run(self.client.dialogs(None)).await
                 }
             }
         }
@@ -583,17 +625,18 @@ impl Server {
     #[tool(description = "Wait (push, no polling) until a new message arrives - returns instantly on Telegram push. target: chat to watch (omit for any chat). after: only messages with id greater than this. timeout: seconds to wait (default 60, max 110)")]
     async fn wait(&self, Parameters(args): Parameters<WaitArgs>) -> String {
         let timeout = args.timeout.unwrap_or(60).clamp(1, 110);
+        let target = args.target.as_ref().map(|t| t.to_string());
         self.run(
             self.client
-                .wait(args.target.as_deref(), args.after, timeout),
+                .wait(target.as_deref(), args.after, timeout),
         )
         .await
     }
 
     #[tool(description = "Control the server-to-client push filter for new-message notifications. on=true with target: push only that chat. on=true: push every chat. on=false with target: stop pushing that chat. on=false: stop all pushes")]
     async fn notify(&self, Parameters(args): Parameters<NotifyArgs>) -> String {
-        let chat_id = match args.target.as_deref() {
-            Some(slot) => match self.client.resolve(slot).await {
+        let chat_id = match args.target.as_ref() {
+            Some(slot) => match self.client.resolve(&slot.to_string()).await {
                 Ok(peer) => peer.id.bot_api_dialog_id().unwrap_or(0),
                 Err(err) => return format!("error: {err}"),
             },
@@ -629,7 +672,7 @@ impl Server {
     #[tool(description = "Send text and/or files to a chat. files: one file sends a photo, document, or voice note by type, several send an album. format: plain, markdown, or html. dates: exact date text in the message to render as tappable chips. reply: message id to reply to. topic: forum topic id to send into. at: future unix timestamp to schedule the send")]
     async fn send(&self, Parameters(args): Parameters<SendArgs>) -> String {
         let send = termgram::Send {
-            target: args.target,
+            target: args.target.to_string(),
             text: args.text.map(|t| termgram::Text {
                 text: t,
                 format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
@@ -645,7 +688,7 @@ impl Server {
 
     #[tool(description = "Mark a chat as read")]
     async fn read(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.mark_as_read(&args.target)).await
+        self.run(self.client.mark_as_read(&args.target.to_string())).await
     }
 
     #[tool(description = "Sync dialog list and recent messages into the local search mirror")]
@@ -663,7 +706,7 @@ impl Server {
     #[tool(description = "Upload a file to a chat (sends a photo, document, or voice note by type; caption is rich text)")]
     async fn upload(&self, Parameters(args): Parameters<UploadArgsSimple>) -> String {
         let send = termgram::Send {
-            target: args.target,
+            target: args.target.to_string(),
             text: args.caption.map(|c| termgram::Text {
                 text: c,
                 format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
@@ -677,29 +720,29 @@ impl Server {
 
     #[tool(description = "Download media from a chat message to the local media dir")]
     async fn download(&self, Parameters(args): Parameters<DownloadArgs>) -> String {
-        self.run(self.client.download(&args.target, args.id)).await
+        self.run(self.client.download(&args.target.to_string(), args.id)).await
     }
 
     #[tool(description = "Edit a message you sent (format: plain, md, or html; dates: exact date text in the message to render as tappable chips)")]
     async fn edit(&self, Parameters(args): Parameters<EditArgs>) -> String {
-        self.run(self.client.edit(&args.target, args.id, &args.text))
+        self.run(self.client.edit(&args.target.to_string(), args.id, &args.text))
             .await
     }
 
     #[tool(description = "Delete messages from a chat")]
     async fn delete(&self, Parameters(args): Parameters<DeleteArgs>) -> String {
-        self.run(self.client.delete(&args.target, &args.ids)).await
+        self.run(self.client.delete(&args.target.to_string(), &args.ids)).await
     }
 
     #[tool(description = "Forward messages between chats")]
     async fn forward(&self, Parameters(args): Parameters<ForwardArgs>) -> String {
-        self.run(self.client.forward(&args.from, &args.to, &args.ids))
+        self.run(self.client.forward(&args.from.to_string(), &args.to.to_string(), &args.ids))
             .await
     }
 
     #[tool(description = "Pin or unpin a message in a chat")]
     async fn pin(&self, Parameters(args): Parameters<PinArgs>) -> String {
-        self.run(self.client.pin(&args.target, args.id, args.remove))
+        self.run(self.client.pin(&args.target.to_string(), args.id, args.remove))
             .await
     }
 
@@ -707,14 +750,14 @@ impl Server {
     async fn react(&self, Parameters(args): Parameters<ReactArgs>) -> String {
         self.run(
             self.client
-                .react(&args.target, args.id, args.emoji.as_deref(), args.remove, args.big),
+                .react(&args.target.to_string(), args.id, args.emoji.as_deref(), args.remove, args.big),
         )
         .await
     }
 
     #[tool(description = "List the reactions on a message and how many times each was used")]
     async fn reactions(&self, Parameters(args): Parameters<ReactionArgs>) -> String {
-        self.run(self.client.reactions(&args.target, args.id)).await
+        self.run(self.client.reactions(&args.target.to_string(), args.id)).await
     }
 
     #[tool(description = "List contacts of the account")]
@@ -730,7 +773,7 @@ impl Server {
 
     #[tool(description = "Delete a contact")]
     async fn delete_contact(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.delete_contact(&args.target)).await
+        self.run(self.client.delete_contact(&args.target.to_string())).await
     }
 
     #[tool(description = "Export all contacts of the account")]
@@ -750,7 +793,7 @@ impl Server {
 
     #[tool(description = "Remove the profile photo of a chat")]
     async fn del_photo(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.del_photo(&args.target)).await
+        self.run(self.client.del_photo(&args.target.to_string())).await
     }
 
     #[tool(description = "List chat folders")]
@@ -772,52 +815,52 @@ impl Server {
     #[tool(description = "List pinned messages of a chat")]
     async fn pinned(&self, Parameters(args): Parameters<MessageArgs>) -> String {
         let limit = args.limit.unwrap_or(20);
-        self.run(self.client.pinned(&args.target, limit)).await
+        self.run(self.client.pinned(&args.target.to_string(), limit)).await
     }
 
     #[tool(description = "List members of a group or channel")]
     async fn members(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.members(&args.target)).await
+        self.run(self.client.members(&args.target.to_string())).await
     }
 
     #[tool(description = "Kick a user from a group")]
     async fn kick(&self, Parameters(args): Parameters<UserArgs>) -> String {
-        self.run(self.client.kick(&args.target, &args.user)).await
+        self.run(self.client.kick(&args.target.to_string(), &args.user)).await
     }
 
     #[tool(description = "Ban a user in a channel")]
     async fn ban(&self, Parameters(args): Parameters<UserArgs>) -> String {
-        self.run(self.client.ban(&args.target, &args.user)).await
+        self.run(self.client.ban(&args.target.to_string(), &args.user)).await
     }
 
     #[tool(description = "Unban a user in a channel")]
     async fn unban(&self, Parameters(args): Parameters<UserArgs>) -> String {
-        self.run(self.client.unban(&args.target, &args.user)).await
+        self.run(self.client.unban(&args.target.to_string(), &args.user)).await
     }
 
     #[tool(description = "Promote a user to admin in a channel")]
     async fn promote(&self, Parameters(args): Parameters<PromoteArgs>) -> String {
         self.run(
             self.client
-                .promote(&args.target, &args.user, args.rank.as_deref()),
+                .promote(&args.target.to_string(), &args.user, args.rank.as_deref()),
         )
         .await
     }
 
     #[tool(description = "Broadcast a typing action in a chat")]
     async fn typing(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.typing(&args.target)).await
+        self.run(self.client.typing(&args.target.to_string())).await
     }
 
     #[tool(description = "Show a user's online status")]
     async fn status(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.status(&args.target)).await
+        self.run(self.client.status(&args.target.to_string())).await
     }
 
     #[tool(description = "Schedule a rich text message for a future unix timestamp")]
     async fn schedule(&self, Parameters(args): Parameters<ScheduleArgs>) -> String {
         let send = termgram::Send {
-            target: args.target,
+            target: args.target.to_string(),
             text: Some(args.text),
             at: Some(args.at as u64),
             ..Default::default()
@@ -827,12 +870,12 @@ impl Server {
 
     #[tool(description = "List scheduled messages of a chat")]
     async fn scheduled(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.scheduled(&args.target)).await
+        self.run(self.client.scheduled(&args.target.to_string())).await
     }
 
     #[tool(description = "Cancel a scheduled message of a chat")]
     async fn cancel(&self, Parameters(args): Parameters<SignArgs>) -> String {
-        self.run(self.client.cancel(&args.target, args.id)).await
+        self.run(self.client.cancel(&args.target.to_string(), args.id)).await
     }
 
     #[tool(description = "Save or clear (empty text) a draft in a chat — the draft text is rich (format, dates)")]
@@ -846,7 +889,7 @@ impl Server {
                 dates: args.dates,
             })
         };
-        self.run(self.client.draft(&args.target, text.as_ref())).await
+        self.run(self.client.draft(&args.target.to_string(), text.as_ref())).await
     }
 
     #[tool(description = "List all saved drafts")]
@@ -856,7 +899,7 @@ impl Server {
 
     #[tool(description = "Show a user's full profile")]
     async fn profile(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.profile(&args.target)).await
+        self.run(self.client.profile(&args.target.to_string())).await
     }
 
     #[tool(description = "Set your account first and last name")]
@@ -876,12 +919,12 @@ impl Server {
 
     #[tool(description = "Block a user")]
     async fn block(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.block(&args.target)).await
+        self.run(self.client.block(&args.target.to_string())).await
     }
 
     #[tool(description = "Unblock a user")]
     async fn unblock(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.unblock(&args.target)).await
+        self.run(self.client.unblock(&args.target.to_string())).await
     }
 
     #[tool(description = "Search all chats in the local sync mirror")]
@@ -893,14 +936,14 @@ impl Server {
     #[tool(description = "Search messages within one chat")]
     async fn searchin(&self, Parameters(args): Parameters<SearchinArgs>) -> String {
         let limit = args.limit.unwrap_or(20) as usize;
-        self.run(self.client.searchin(&args.target, &args.query, limit))
+        self.run(self.client.searchin(&args.target.to_string(), &args.query, limit))
             .await
     }
 
     #[tool(description = "Send a photo to a chat (caption is rich text)")]
     async fn photo(&self, Parameters(args): Parameters<SendPhotoArgs>) -> String {
         let send = termgram::Send {
-            target: args.target,
+            target: args.target.to_string(),
             text: args.caption.map(|c| termgram::Text {
                 text: c,
                 format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
@@ -915,7 +958,7 @@ impl Server {
     #[tool(description = "Send multiple files as one media album (caption is plain text)")]
     async fn album(&self, Parameters(args): Parameters<AlbumArgs>) -> String {
         let send = termgram::Send {
-            target: args.target,
+            target: args.target.to_string(),
             text: args.caption.map(|c| termgram::Text {
                 text: c,
                 format: termgram::Format::Plain,
@@ -930,7 +973,7 @@ impl Server {
     #[tool(description = "Send an audio file as a voice message")]
     async fn voice(&self, Parameters(args): Parameters<VoiceArgs>) -> String {
         let send = termgram::Send {
-            target: args.target,
+            target: args.target.to_string(),
             text: args.caption.map(|c| termgram::Text {
                 text: c,
                 format: if args.format.is_empty() { termgram::Format::Plain } else { termgram::Format::parse(Some(&args.format)).unwrap_or(termgram::Format::Plain) },
@@ -947,7 +990,7 @@ impl Server {
         let limit = args.limit.unwrap_or(20) as usize;
         match termgram::Mirror::open(&self.client.mirror()).await {
             Ok(mirror) => self
-                .run(mirror.lines(&args.target, limit))
+                .run(mirror.lines(&args.target.to_string(), limit))
                 .await,
             Err(err) => format!("error: {err}"),
         }
@@ -955,7 +998,7 @@ impl Server {
 
     #[tool(description = "Download every media of a chat into the local media dir")]
     async fn grab(&self, Parameters(args): Parameters<TargetArgs>) -> String {
-        self.run(self.client.grab(&args.target)).await
+        self.run(self.client.grab(&args.target.to_string())).await
     }
 
     #[tool(description = "Export the account session, mirror and config to a folder")]
@@ -976,57 +1019,57 @@ impl Server {
 
     #[tool(description = "Mute or unmute chat notifications. forever=true mutes forever; omit or false unmutes")]
     async fn mute(&self, Parameters(args): Parameters<MuteArgs>) -> String {
-        self.run(self.client.mute(&args.target, args.forever)).await
+        self.run(self.client.mute(&args.target.to_string(), args.forever)).await
     }
 
     #[tool(description = "List admins of a group or channel")]
     async fn admins(&self, Parameters(args): Parameters<AdminsArgs>) -> String {
-        self.run(self.client.admins(&args.target)).await
+        self.run(self.client.admins(&args.target.to_string())).await
     }
 
     #[tool(description = "List banned users in a channel")]
     async fn banned(&self, Parameters(args): Parameters<BannedArgs>) -> String {
-        self.run(self.client.banned(&args.target)).await
+        self.run(self.client.banned(&args.target.to_string())).await
     }
 
     #[tool(description = "Demote a user from admin in a channel")]
     async fn demote(&self, Parameters(args): Parameters<DemoteArgs>) -> String {
-        self.run(self.client.demote(&args.target, &args.user)).await
+        self.run(self.client.demote(&args.target.to_string(), &args.user)).await
     }
 
     #[tool(description = "Invite users to a group or channel (repeat users)")]
     async fn invite(&self, Parameters(args): Parameters<InviteArgs>) -> String {
-        self.run(self.client.invite(&args.target, &args.users)).await
+        self.run(self.client.invite(&args.target.to_string(), &args.users)).await
     }
 
     #[tool(description = "Rename a group or channel")]
     async fn rename(&self, Parameters(args): Parameters<RenameArgs>) -> String {
-        self.run(self.client.edit_title(&args.target, &args.title)).await
+        self.run(self.client.edit_title(&args.target.to_string(), &args.title)).await
     }
 
     #[tool(description = "Set the description of a group or channel")]
     async fn about(&self, Parameters(args): Parameters<AboutArgs>) -> String {
-        self.run(self.client.edit_about(&args.target, &args.about)).await
+        self.run(self.client.edit_about(&args.target.to_string(), &args.about)).await
     }
 
     #[tool(description = "Change the photo of a group or channel")]
     async fn chat_photo(&self, Parameters(args): Parameters<ChatPhotoArgs>) -> String {
-        self.run(self.client.edit_photo(&args.target, &args.path)).await
+        self.run(self.client.edit_photo(&args.target.to_string(), &args.path)).await
     }
 
     #[tool(description = "Export an invite link for a chat")]
     async fn invite_link(&self, Parameters(args): Parameters<InviteLinkArgs>) -> String {
-        self.run(self.client.invite_link(&args.target)).await
+        self.run(self.client.invite_link(&args.target.to_string())).await
     }
 
     #[tool(description = "Clear history of a chat. revoke=true also removes history for other participants")]
     async fn flush(&self, Parameters(args): Parameters<FlushArgs>) -> String {
-        self.run(self.client.flush(&args.target, args.revoke)).await
+        self.run(self.client.flush(&args.target.to_string(), args.revoke)).await
     }
 
     #[tool(description = "Send a sticker to a chat")]
     async fn send_sticker(&self, Parameters(args): Parameters<SendStickerArgs>) -> String {
-        self.run(self.client.send_sticker(&args.target, &args.path)).await
+        self.run(self.client.send_sticker(&args.target.to_string(), &args.path)).await
     }
 
     #[tool(description = "List installed sticker packs")]
@@ -1036,42 +1079,42 @@ impl Server {
 
     #[tool(description = "Show media info of a message")]
     async fn media_info(&self, Parameters(args): Parameters<MediaInfoArgs>) -> String {
-        self.run(self.client.media_info(&args.target, args.id)).await
+        self.run(self.client.media_info(&args.target.to_string(), args.id)).await
     }
 
     #[tool(description = "Unpin all messages in a chat")]
     async fn unpin_all(&self, Parameters(args): Parameters<UnpinAllArgs>) -> String {
-        self.run(self.client.unpin_all(&args.target)).await
+        self.run(self.client.unpin_all(&args.target.to_string())).await
     }
 
     #[tool(description = "Show messages around a given message ID")]
     async fn context(&self, Parameters(args): Parameters<ContextArgs>) -> String {
-        self.run(self.client.context(&args.target, args.id, args.size)).await
+        self.run(self.client.context(&args.target.to_string(), args.id, args.size)).await
     }
 
     #[tool(description = "Send a location to a chat")]
     async fn send_location(&self, Parameters(args): Parameters<LocationArgs>) -> String {
-        self.run(self.client.send_location(&args.target, args.lat, args.lon)).await
+        self.run(self.client.send_location(&args.target.to_string(), args.lat, args.lon)).await
     }
 
     #[tool(description = "Send a venue to a chat")]
     async fn send_venue(&self, Parameters(args): Parameters<VenueArgs>) -> String {
-        self.run(self.client.send_venue(&args.target, &args.title, &args.address, args.lat, args.lon)).await
+        self.run(self.client.send_venue(&args.target.to_string(), &args.title, &args.address, args.lat, args.lon)).await
     }
 
     #[tool(description = "Send a contact card to a chat")]
     async fn send_contact(&self, Parameters(args): Parameters<ContactArgs>) -> String {
-        self.run(self.client.send_contact(&args.target, &args.phone, &args.first, &args.last)).await
+        self.run(self.client.send_contact(&args.target.to_string(), &args.phone, &args.first, &args.last)).await
     }
 
     #[tool(description = "Send a dice to a chat")]
     async fn send_dice(&self, Parameters(args): Parameters<DiceArgs>) -> String {
-        self.run(self.client.send_dice(&args.target)).await
+        self.run(self.client.send_dice(&args.target.to_string())).await
     }
 
     #[tool(description = "Stop a poll in a chat")]
     async fn stop_poll(&self, Parameters(args): Parameters<StopPollArgs>) -> String {
-        self.run(self.client.stop_poll(&args.target, args.id)).await
+        self.run(self.client.stop_poll(&args.target.to_string(), args.id)).await
     }
 
     #[tool(description = "Set your account username (omit to remove)")]
@@ -1109,17 +1152,17 @@ impl Server {
 
     #[tool(description = "Archive or unarchive a chat")]
     async fn archive_chat(&self, Parameters(args): Parameters<ArchiveArgs>) -> String {
-        self.run(self.client.archive_chat(&args.target, args.archive)).await
+        self.run(self.client.archive_chat(&args.target.to_string(), args.archive)).await
     }
 
     #[tool(description = "Pin or unpin a chat in the dialog list")]
     async fn pin_dialog(&self, Parameters(args): Parameters<PinDialogArgs>) -> String {
-        self.run(self.client.pin_dialog(&args.target, args.pin)).await
+        self.run(self.client.pin_dialog(&args.target.to_string(), args.pin)).await
     }
 
     #[tool(description = "Enable or disable slow mode in a group or channel")]
     async fn slow_mode(&self, Parameters(args): Parameters<SlowModeArgs>) -> String {
-        self.run(self.client.slow_mode(&args.target, args.seconds)).await
+        self.run(self.client.slow_mode(&args.target.to_string(), args.seconds)).await
     }
 
     #[tool(description = "Create a sticker pack")]
@@ -1134,12 +1177,12 @@ impl Server {
 
     #[tool(description = "Toggle close friends for a user")]
     async fn close_friend(&self, Parameters(args): Parameters<CloseFriendArgs>) -> String {
-        self.run(self.client.close_friend(&args.target)).await
+        self.run(self.client.close_friend(&args.target.to_string())).await
     }
 
     #[tool(description = "Migrate a basic group to a supergroup")]
     async fn migrate(&self, Parameters(args): Parameters<MigrateArgs>) -> String {
-        self.run(self.client.migrate_to_supergroup(&args.target)).await
+        self.run(self.client.migrate_to_supergroup(&args.target.to_string())).await
     }
 
     #[tool(description = "Discover and test MTProto proxies from public sources")]

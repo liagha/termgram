@@ -32,7 +32,11 @@ pub struct Proxy {
 
 impl Proxy {
     pub fn to_socks5_url(&self) -> String {
-        format!("socks5://{}:{}", self.server, self.port)
+        if self.secret.is_empty() {
+            format!("socks5://{}:{}", self.server, self.port)
+        } else {
+            format!("socks5://:{}@{}:{}", self.secret, self.server, self.port)
+        }
     }
 
     pub fn connection_params(&self) -> ConnectionParams {
@@ -338,7 +342,12 @@ pub fn list_cached() -> Result<Vec<Proxy>> {
 /// Apply proxy to client configuration
 pub fn apply_proxy_to_config(config: &mut ConnectionParams, proxy: &crate::config::ProxyConfig) {
     if proxy.enabled {
-        config.proxy_url = Some(format!("socks5://{}:{}", proxy.server, proxy.port));
+        let url = if proxy.secret.is_empty() {
+            format!("socks5://{}:{}", proxy.server, proxy.port)
+        } else {
+            format!("socks5://:{}@{}:{}", proxy.secret, proxy.server, proxy.port)
+        };
+        config.proxy_url = Some(url);
     }
 }
 
